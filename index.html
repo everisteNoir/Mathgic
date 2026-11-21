@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Platonic Grimoire — Sacred Geometry &amp; Mathematical Sorcery</title>
+  <title>Mathgic — Sacred Geometry &amp; Non-Euclidean Laboratory</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -28,23 +28,27 @@
     <div class="brand">
       <div class="brand-sigil" aria-hidden="true">❖</div>
       <div>
-        <h1 class="brand-title">PLATONIC GRIMOIRE</h1>
-        <p class="brand-subtitle">The Five Timaeus Elements &amp; Mathematical Laboratory</p>
+        <h1 class="brand-title">MATHGIC</h1>
+        <p class="brand-subtitle">Sacred Geometry, Elemental Cores &amp; Non-Euclidean Space</p>
       </div>
     </div>
 
     <div class="top-actions">
+      <button id="btn-solid-vis" class="glass-btn" title="Show or hide the central Platonic wireframe solid">
+        <span class="icon" id="solid-vis-icon">👁️</span>
+        <span class="label" id="solid-vis-label">Solid: On</span>
+      </button>
       <button id="btn-audio" class="glass-btn" title="Toggle harmonic chimes on geometric interaction">
         <span class="icon" id="audio-icon">🔇</span>
         <span class="label">Audio</span>
       </button>
       <button id="btn-share" class="glass-btn" title="Copy link to current geometric state">
         <span class="icon">🔗</span>
-        <span class="label">Share View</span>
+        <span class="label">Share</span>
       </button>
-      <button id="btn-toggle-panel" class="glass-btn primary-glow" title="Open/Close Mathematical Grimoire">
+      <button id="btn-toggle-panel" class="glass-btn primary-glow" title="Open/Close Mathgic Control Panel">
         <span class="icon">✦</span>
-        <span class="label">Decode &amp; Spells</span>
+        <span class="label">Mathgic Lab</span>
       </button>
     </div>
   </header>
@@ -53,17 +57,17 @@
   <aside id="telemetry-hud" class="telemetry-hud">
     <div class="telemetry-badge" id="telemetry-type">GEOMETRIC EXPLORATION</div>
     <div class="telemetry-main" id="telemetry-main">Drag to rotate • Touch vertices, edges, or faces</div>
-    <div class="telemetry-sub" id="telemetry-sub">Click &amp; hold to charge elemental energy</div>
+    <div class="telemetry-sub" id="telemetry-sub">Click &amp; hold to ignite elemental core</div>
     <div class="charge-bar-wrap" id="charge-bar-wrap">
       <div class="charge-bar-fill" id="charge-bar-fill"></div>
     </div>
   </aside>
 
-  <!-- Right Grimoire Control Panel (Collapsible) -->
+  <!-- Right Mathgic Control Panel (Collapsible) -->
   <aside id="grimoire-panel" class="grimoire-panel">
     <div class="panel-tabs">
-      <button class="tab-btn active" data-tab="tab-element">Elements &amp; Geometry</button>
-      <button class="tab-btn" data-tab="tab-spells">Mathematical Spells</button>
+      <button class="tab-btn active" data-tab="tab-element">Platonic Elements</button>
+      <button class="tab-btn" data-tab="tab-spells">Mathgic Spells</button>
     </div>
 
     <!-- TAB 1: Platonic Philosophy & 2D Net Unfolding -->
@@ -111,16 +115,16 @@
           <span class="control-val" id="val-unfold">0%</span>
         </div>
         <input type="range" id="slider-unfold" min="0" max="1" step="0.005" value="0" />
-        <p class="control-hint">Drag the slider to unhinge edges and unfold the 3D polyhedron flat onto a 2D plane.</p>
+        <p class="control-hint">Drag the slider to unhinge glowing edges and unfold the 3D polyhedron flat onto a 2D plane.</p>
       </div>
 
       <!-- Signature Elemental Interaction -->
       <div class="control-group">
         <div class="control-header">
-          <label>Elemental Interaction</label>
+          <label>Elemental Core Interaction</label>
         </div>
         <p class="control-hint" id="info-interaction-tip">
-          Click &amp; hold on the solid to build thermal charge from crimson to white-hot; touch edges to pluck harmonic notes.
+          Click &amp; hold on the solid to stoke the inner flame from crimson to white-hot; touch edges to pluck harmonic notes.
         </p>
         <button id="btn-element-pulse" class="action-btn">
           ✦ Trigger Elemental Resonance
@@ -128,10 +132,10 @@
       </div>
     </div>
 
-    <!-- TAB 2: Mathematical Spell Plugins (Auto-generated from js/spells/) -->
+    <!-- TAB 2: Mathgic Spell Plugins (Auto-generated from js/spells/) -->
     <div id="tab-spells" class="tab-content">
       <p class="panel-intro">
-        Activate the <strong>Mathematical Spell Modules</strong> below. The modular plugin architecture allows you to attach new mathematical phenomena anytime.
+        Activate <strong>Mathgic Modules</strong> below. Inscribed spells nest inside the transparent polyhedron; hyper-spatial portals automatically clear the stage for unobstructed viewing.
       </p>
       <div id="spells-container" class="spells-container">
         <!-- SpellManager.js dynamically injects spell cards here -->

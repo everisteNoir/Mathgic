@@ -5,7 +5,7 @@ export const PHI = (1 + Math.sqrt(5)) / 2;
 /**
  * PlatonicMath.js — Pure Mathematical Data for the 5 Platonic Solids
  * Contains normalized vertex coordinates, edge/face topology, Timaeus philosophy,
- * and the BFS Spanning-Tree Hinge algorithm for exact 2D net unfolding.
+ * multi-stop edge color palettes, and the BFS Spanning-Tree Hinge algorithm.
  */
 export const PLATONIC_DATA = {
   tetrahedron: {
@@ -13,28 +13,30 @@ export const PLATONIC_DATA = {
     name: 'Tetrahedron',
     element: 'Fire',
     elementGreek: 'PYR',
-    primaryColor: '#ff5722',
-    secondaryColor: '#ffca28',
+    primaryColor: '#ff2400',   // Crimson Red
+    secondaryColor: '#ff7b00', // Blazing Orange
+    tertiaryColor: '#ffd60a',  // Radiant Gold
     baseFreq: 174.61, // F3
     damping: 0.965,
-    floatAmp: 0.06,
+    floatAmp: 0.055,
     floatSpeed: 1.8,
     faceShape: '4 equilateral triangles • Dual: Self-dual',
     dualId: 'tetrahedron',
     philosophy:
       '“Among regular solids, the tetrahedron has the sharpest angles and smallest volume-to-surface ratio — Plato assigned it to Fire for its piercing heat and swift motion.”',
     interactionTip:
-      'Click & hold on the solid to build thermal charge from crimson to white-hot; touch edges to pluck harmonic notes.'
+      'Click & hold to stoke the inner flame from crimson-orange to white-hot gold; touch glowing edges to pluck harmonic notes.'
   },
   cube: {
     id: 'cube',
     name: 'Hexahedron (Cube)',
     element: 'Earth',
     elementGreek: 'GĒ',
-    primaryColor: '#10b981',
-    secondaryColor: '#a7f3d0',
+    primaryColor: '#059669',   // Deep Emerald
+    secondaryColor: '#10b981', // Jade Green
+    tertiaryColor: '#a7f3d0',  // Luminous Mint
     baseFreq: 130.81, // C3
-    damping: 0.91, // Heavy inertia, stops quickly
+    damping: 0.91,
     floatAmp: 0.025,
     floatSpeed: 0.8,
     faceShape: '6 regular squares • Dual: Octahedron',
@@ -42,17 +44,18 @@ export const PLATONIC_DATA = {
     philosophy:
       '“Standing most steadily upon any plane thanks to its square bases — the Cube embodies the stability, endurance, and solidity of Earth.”',
     interactionTip:
-      'Double-click or press Trigger Resonance to send a seismic wave rippling across the spatial grid beneath.'
+      'Double-click or press Trigger Resonance to send a seismic emerald pulse through the inner crystal core and grid.'
   },
   octahedron: {
     id: 'octahedron',
     name: 'Octahedron',
     element: 'Air',
     elementGreek: 'AĒR',
-    primaryColor: '#38bdf8',
-    secondaryColor: '#e0f2fe',
+    primaryColor: '#0284c7',   // Azure Sky
+    secondaryColor: '#38bdf8', // Luminous Cyan
+    tertiaryColor: '#e0f2fe',  // Ice White
     baseFreq: 196.00, // G3
-    damping: 0.988, // Weightless, spins freely
+    damping: 0.988,
     floatAmp: 0.11,
     floatSpeed: 2.1,
     faceShape: '8 equilateral triangles • Dual: Cube',
@@ -60,15 +63,16 @@ export const PLATONIC_DATA = {
     philosophy:
       '“Slender, balanced, and spinning effortlessly when held by two opposite vertices — Plato saw the Octahedron as the freely flowing corpuscle of Air.”',
     interactionTip:
-      'Move your cursor around the solid to generate air currents that tilt and drift the crystal.'
+      'Move your cursor around the crystal to accelerate the swirling wind vortex ribbons inside.'
   },
   icosahedron: {
     id: 'icosahedron',
     name: 'Icosahedron',
     element: 'Water',
     elementGreek: 'HYDŌR',
-    primaryColor: '#3b82f6',
-    secondaryColor: '#67e8f9',
+    primaryColor: '#1d4ed8',   // Deep Cobalt
+    secondaryColor: '#3b82f6', // Ocean Blue
+    tertiaryColor: '#67e8f9',  // Aqua Caustic
     baseFreq: 146.83, // D3
     damping: 0.96,
     floatAmp: 0.075,
@@ -78,15 +82,16 @@ export const PLATONIC_DATA = {
     philosophy:
       '“Closest to a sphere among the triangular solids, rolling smoothly without resistance — representing the fluidity and gentle flow of Water.”',
     interactionTip:
-      'Click anywhere on the surface to send caustic water ripples radiating across all 20 triangular faces.'
+      'Click anywhere on the frame to send harmonic water ripples across the suspended liquid core inside.'
   },
   dodecahedron: {
     id: 'dodecahedron',
     name: 'Dodecahedron',
     element: 'Aether',
     elementGreek: 'KOSMOS',
-    primaryColor: '#c084fc',
-    secondaryColor: '#f5d0fe',
+    primaryColor: '#7e22ce',   // Royal Violet
+    secondaryColor: '#c084fc', // Nebula Orchid
+    tertiaryColor: '#fde047',  // Starlight Gold
     baseFreq: 220.00, // A3
     damping: 0.975,
     floatAmp: 0.05,
@@ -96,7 +101,7 @@ export const PLATONIC_DATA = {
     philosophy:
       '“Its 12 pentagonal faces correspond to the 12 signs of the zodiac; Plato wrote that the Creator used this solid to embroider the constellations across the cosmos.”',
     interactionTip:
-      'Scroll your mouse wheel to zoom right through the pentagonal shell and inspect the celestial core inside.'
+      'Scroll your mouse wheel to zoom right through the pentagonal edges into the miniature cosmos core inside.'
   }
 };
 
@@ -184,7 +189,6 @@ export function getSolidGeometryData(id) {
       [-PHI, 0, -invPhi], [PHI, 0, -invPhi], [PHI, 0, invPhi], [-PHI, 0, invPhi]
     ].map(([x, y, z]) => new THREE.Vector3(x * s, y * s, z * s));
 
-    // Automatically derive the 12 regular pentagonal faces from shortest-edge adjacency
     let minEdge = Infinity;
     for (let i = 0; i < rawVertices.length; i++) {
       for (let j = i + 1; j < rawVertices.length; j++) {

@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 
 /**
- * Tesseract4DSpell.js — Spell 3: 4th-Dimension Hypercube Portal (Tesseract)
- * Computes 4D rotations across the XW and ZW planes in (x, y, z, w) space,
- * then applies stereographic perspective projection down into 3D space.
+ * Tesseract4DSpell.js — Mathgic 3: 4D Hypercube Portal (Tesseract)
+ * Automatically isolates the stage (isolateStage: true) so the 4D hypercube
+ * never overlaps or collides with the 3D Platonic solid.
  */
 export const Tesseract4DSpell = {
   id: 'tesseract-4d',
   icon: '🌌',
   name: '4D Hypercube Portal (Tesseract)',
+  isolateStage: true,
   description:
     'Projects a 4-dimensional Tesseract (16 vertices, 32 edges) into 3D space. Watch the inner cube continuously turn itself inside out!',
   controls: [
@@ -24,10 +25,10 @@ export const Tesseract4DSpell = {
     {
       id: 'distance4d',
       label: '4D projection distance',
-      min: 1.7,
+      min: 1.75,
       max: 3.5,
       step: 0.05,
-      default: 2.3,
+      default: 2.35,
       format: (v) => `${v.toFixed(2)} W`
     }
   ],
@@ -42,7 +43,6 @@ export const Tesseract4DSpell = {
     this.engine = engine;
     this.angleW = 0;
 
-    // Generate 16 vertices of a 4D Tesseract (±1, ±1, ±1, ±1)
     this.vertices4D = [];
     for (let i = 0; i < 16; i++) {
       this.vertices4D.push([
@@ -53,7 +53,6 @@ export const Tesseract4DSpell = {
       ]);
     }
 
-    // 32 edges connecting vertices that differ in exactly 1 coordinate
     this.edges4D = [];
     for (let i = 0; i < 16; i++) {
       for (let j = i + 1; j < 16; j++) {
@@ -72,7 +71,7 @@ export const Tesseract4DSpell = {
     const lineMat = new THREE.LineBasicMaterial({
       color: '#c084fc',
       transparent: true,
-      opacity: 0.92
+      opacity: 0.95
     });
     this.lineSegments = new THREE.LineSegments(lineGeo, lineMat);
 
@@ -81,9 +80,9 @@ export const Tesseract4DSpell = {
     ptGeo.setAttribute('position', new THREE.BufferAttribute(ptPositions, 3));
     const ptMat = new THREE.PointsMaterial({
       color: '#38bdf8',
-      size: 0.085,
+      size: 0.095,
       transparent: true,
-      opacity: 0.95
+      opacity: 0.98
     });
     this.vertexPoints = new THREE.Points(ptGeo, ptMat);
 
@@ -95,23 +94,19 @@ export const Tesseract4DSpell = {
     if (!this.lineSegments) return;
 
     this.angleW += delta * (this.params.speed4d ?? 0.85);
-    const d4 = this.params.distance4d ?? 2.3;
+    const d4 = this.params.distance4d ?? 2.35;
     const cosA = Math.cos(this.angleW);
     const sinA = Math.sin(this.angleW);
     const cosB = Math.cos(this.angleW * 0.6);
     const sinB = Math.sin(this.angleW * 0.6);
 
-    // Project each 4D vertex -> 3D
     const projected3D = this.vertices4D.map(([x, y, z, w]) => {
-      // Rotate in XW plane
       const x1 = x * cosA - w * sinA;
       const w1 = x * sinA + w * cosA;
 
-      // Rotate in ZW plane
       const z2 = z * cosB - w1 * sinB;
       const w2 = z * sinB + w1 * cosB;
 
-      // Perspective projection from 4th dimension into 3D
       const factor = 1.45 / (d4 - w2);
       return [x1 * factor, y * factor, z2 * factor];
     });

@@ -7,7 +7,6 @@ export class AudioEngine {
   constructor() {
     this.ctx = null;
     this.enabled = false;
-    // Mystical pentatonic / Pythagorean harmonic scale
     this.scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
   }
 
@@ -26,9 +25,6 @@ export class AudioEngine {
     return this.enabled;
   }
 
-  /**
-   * Play a gentle harmonic chime mapped to a geometric index
-   */
   playChime(index = 0, volume = 0.1) {
     if (!this.enabled || !this.ctx) return;
 
@@ -53,9 +49,6 @@ export class AudioEngine {
     osc.stop(now + 0.9);
   }
 
-  /**
-   * Deep resonant chord when switching solids or pulsing elements
-   */
   playResonance(baseFreq = 130.81) {
     if (!this.enabled || !this.ctx) return;
 

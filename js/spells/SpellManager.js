@@ -1,6 +1,7 @@
 /**
- * SpellManager.js — Plug-and-Play Mathematical Spell Plugin Manager
- * Automatically builds toggle switches and parameter sliders for any registered spell module.
+ * SpellManager.js — Plug-and-Play Mathgic Plugin Manager
+ * Manages inscribed spells (which nest inside the transparent Platonic solid)
+ * and hyper-spatial portals (which isolate the stage so there is zero overlap).
  */
 export class SpellManager {
   constructor(engine, eventBus, containerEl) {
@@ -26,9 +27,6 @@ export class SpellManager {
     });
   }
 
-  /**
-   * Register a new mathematical spell module into the Grimoire
-   */
   register(spell) {
     spell.active = false;
     spell.params = {};
@@ -45,6 +43,19 @@ export class SpellManager {
   setSpellActive(spellId, isActive) {
     const spell = this.spells.get(spellId);
     if (!spell || spell.active === isActive) return;
+
+    // If activating a hyper-spatial portal (e.g., 4D Tesseract or Non-Euclidean Space),
+    // automatically deactivate other portals and isolate the stage so nothing collides
+    if (isActive && spell.isolateStage) {
+      for (const other of this.spells.values()) {
+        if (other.id !== spellId && other.active && other.isolateStage) {
+          this.setSpellActive(other.id, false);
+        }
+      }
+      this.engine.pushPortalIsolation();
+    } else if (!isActive && spell.isolateStage) {
+      this.engine.popPortalIsolation();
+    }
 
     spell.active = isActive;
     const card = this.containerEl.querySelector(`[data-spell-id="${spellId}"]`);
@@ -74,13 +85,17 @@ export class SpellManager {
     card.className = 'spell-card';
     card.dataset.spellId = spell.id;
 
+    const tagLabel = spell.isolateStage ? 'HYPER-SPATIAL PORTAL' : 'INSCRIBED GEOMETRY';
+    const tagClass = spell.isolateStage ? 'spell-tag portal' : 'spell-tag';
+
     card.innerHTML = `
       <div class="spell-card-header">
         <div>
           <div class="spell-title">${spell.icon || '✦'} ${spell.name}</div>
+          <span class="${tagClass}">${tagLabel}</span>
           <div class="spell-desc">${spell.description}</div>
         </div>
-        <label class="spell-toggle" title="Toggle Spell">
+        <label class="spell-toggle" title="Toggle Mathgic Module">
           <input type="checkbox" />
           <span class="spell-toggle-slider"></span>
         </label>
@@ -114,6 +129,14 @@ export class SpellManager {
         });
         controlsWrap.appendChild(row);
       });
+    }
+
+    if (spell.hasLiveReadout) {
+      const readout = document.createElement('div');
+      readout.className = 'spell-live-readout';
+      readout.textContent = spell.initialReadout || '';
+      spell._readoutEl = readout;
+      controlsWrap.appendChild(readout);
     }
 
     this.containerEl.appendChild(card);

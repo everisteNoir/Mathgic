@@ -5,9 +5,14 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createGlobalUniforms } from './Uniforms.js';
 import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js';
 
+const WORLD_X = new THREE.Vector3(1, 0, 0);
+const WORLD_Y = new THREE.Vector3(0, 1, 0);
+
 /**
  * Engine.js — 3D Graphics & Physics Interaction Core
- * Manages Scene, Camera, UnrealBloom post-processing, Vertex/Edge/Face Raycasting, and 60fps Loop.
+ * Manages Scene, Camera, UnrealBloom post-processing, Vertex/Edge/Face Raycasting,
+ * World-Space Trackball Quaternion Rotation (never inverts when tilted upside-down),
+ * Stage Isolation (so hyper-spatial Mathgic portals never overlap the Platonic solid), and 60fps Loop.
  */
 export class Engine {
   constructor(container, eventBus) {
@@ -17,19 +22,26 @@ export class Engine {
     this.builder = new SolidMeshBuilder(this.uniforms);
 
     this.activeSolid = null;
-    this.spellLayer = new THREE.Group(); // Dedicated layer for Mathematical Spell Plugins
+    this.spellLayer = new THREE.Group();
     this.spellLayer.name = 'SpellLayer';
 
-    // Inertial rotation state
+    // Stage visibility controls (prevents overlapping with hyper-spatial Mathgic modules)
+    this.manualSolidVisible = true;
+    this.portalAutoHideCount = 0;
+
+    // Inertial world-space angular velocity: x = yaw (World Y), y = pitch (World X)
     this.isDragging = false;
     this.isHolding = false;
     this.dragDistance = 0;
     this.prevPointer = new THREE.Vector2();
     this.pointerNDC = new THREE.Vector2(99, 99);
-    this.angularVelocity = new THREE.Vector2(0.004, 0.006);
+    this.angularVelocity = new THREE.Vector2(0.0045, 0.0);
     this.targetCameraQuat = null;
     this.cameraDistance = 3.6;
     this.targetCameraDistance = 3.6;
+
+    this._qYaw = new THREE.Quaternion();
+    this._qPitch = new THREE.Quaternion();
 
     this.hoveredObject = null;
     this.clock = new THREE.Clock();
@@ -42,7 +54,7 @@ export class Engine {
 
   _initScene() {
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2('#05060c', 0.065);
+    this.scene.fog = new THREE.FogExp2('#05060c', 0.06);
 
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;
@@ -55,21 +67,18 @@ export class Engine {
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.18;
     this.container.appendChild(this.renderer.domElement);
 
-    // Central pivot holding both the active solid and active spells
     this.worldPivot = new THREE.Group();
     this.scene.add(this.worldPivot);
     this.worldPivot.add(this.spellLayer);
 
     this.raycaster = new THREE.Raycaster();
-    this.raycaster.params.Line.threshold = 0.06;
   }
 
   _initEnvironment() {
-    // Deep astral starfield background
-    const starCount = 900;
+    const starCount = 950;
     const starPos = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount; i++) {
       const r = 14 + Math.random() * 28;
@@ -90,7 +99,6 @@ export class Engine {
     this.starField = new THREE.Points(starGeo, starMat);
     this.scene.add(this.starField);
 
-    // Polar seismic / celestial grid underneath
     this.gridHelper = new THREE.PolarGridHelper(4.5, 16, 8, 64, '#1e293b', '#0f172a');
     this.gridHelper.position.y = -1.65;
     this.scene.add(this.gridHelper);
@@ -104,8 +112,54 @@ export class Engine {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.72, 0.45, 0.25);
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.85, 0.45, 0.22);
     this.composer.addPass(this.bloomPass);
+  }
+
+  /**
+   * Rotates worldPivot in screen/world axes so dragging right ALWAYS turns the front face right
+   * and dragging left ALWAYS turns the front face left, regardless of upside-down orientation.
+   */
+  _applyWorldRotation(yawDelta, pitchDelta) {
+    if (yawDelta !== 0) {
+      this._qYaw.setFromAxisAngle(WORLD_Y, yawDelta);
+      this.worldPivot.quaternion.premultiply(this._qYaw);
+    }
+    if (pitchDelta !== 0) {
+      this._qPitch.setFromAxisAngle(WORLD_X, pitchDelta);
+      this.worldPivot.quaternion.premultiply(this._qPitch);
+    }
+    this.worldPivot.quaternion.normalize();
+  }
+
+  isSolidEffectivelyVisible() {
+    return this.manualSolidVisible && this.portalAutoHideCount === 0;
+  }
+
+  setManualSolidVisible(visible) {
+    this.manualSolidVisible = visible;
+    this._syncSolidVisibility();
+  }
+
+  pushPortalIsolation() {
+    this.portalAutoHideCount++;
+    this._syncSolidVisibility();
+  }
+
+  popPortalIsolation() {
+    this.portalAutoHideCount = Math.max(0, this.portalAutoHideCount - 1);
+    this._syncSolidVisibility();
+  }
+
+  _syncSolidVisibility() {
+    const vis = this.isSolidEffectivelyVisible();
+    if (this.activeSolid) {
+      this.activeSolid.rootGroup.visible = vis;
+    }
+    this.eventBus.emit('SOLID_VISIBILITY_CHANGED', {
+      visible: vis,
+      autoHidden: this.portalAutoHideCount > 0
+    });
   }
 
   loadSolid(solidId) {
@@ -118,14 +172,14 @@ export class Engine {
     this.activeSolid = built;
     this.worldPivot.add(built.rootGroup);
 
-    // Update global shader colors & unfolding state
     this.uniforms.uColorPrimary.value.set(built.meta.primaryColor);
     this.uniforms.uColorSecondary.value.set(built.meta.secondaryColor);
+    this.uniforms.uColorTertiary.value.set(built.meta.tertiaryColor);
     this.uniforms.uEnergy.value = 0;
     built.setUnfold(this.uniforms.uUnfold.value);
 
-    // Show polar grid for Earth and Aether
-    this.gridHelper.visible = solidId === 'cube' || solidId === 'dodecahedron';
+    this.gridHelper.visible = (solidId === 'cube' || solidId === 'dodecahedron') && this.portalAutoHideCount === 0;
+    this._syncSolidVisibility();
 
     this.eventBus.emit('SOLID_CHANGED', {
       solidId,
@@ -167,7 +221,7 @@ export class Engine {
       this.isHolding = true;
       this.dragDistance = 0;
       this.prevPointer.set(x, y);
-      this.targetCameraQuat = null; // Cancel auto-alignment if user manually drags
+      this.targetCameraQuat = null;
     };
 
     const onMove = (e) => {
@@ -181,11 +235,11 @@ export class Engine {
         const dy = y - this.prevPointer.y;
         this.dragDistance += Math.hypot(dx, dy);
 
-        this.angularVelocity.x = dy * 0.0055;
-        this.angularVelocity.y = dx * 0.0055;
+        const yawVel = dx * 0.006;
+        const pitchVel = dy * 0.006;
 
-        this.worldPivot.rotation.y += this.angularVelocity.y;
-        this.worldPivot.rotation.x += this.angularVelocity.x;
+        this.angularVelocity.set(yawVel, pitchVel);
+        this._applyWorldRotation(yawVel, pitchVel);
         this.prevPointer.set(x, y);
       } else {
         this._performRaycastHover();
@@ -194,7 +248,6 @@ export class Engine {
 
     const onUp = () => {
       if (this.isDragging && this.dragDistance < 6) {
-        // Treat short tap/click as face selection & surface ripple
         this._performRaycastClick();
       }
       this.isDragging = false;
@@ -205,8 +258,8 @@ export class Engine {
       e.preventDefault();
       this.targetCameraDistance = THREE.MathUtils.clamp(
         this.targetCameraDistance + e.deltaY * 0.0022,
-        1.35, // Allows zooming inside the Aether Dodecahedron
-        6.5
+        1.35,
+        6.8
       );
     };
 
@@ -236,23 +289,22 @@ export class Engine {
   }
 
   _performRaycastHover() {
-    if (!this.activeSolid) return;
+    if (!this.activeSolid || !this.activeSolid.rootGroup.visible) return;
     this.raycaster.setFromCamera(this.pointerNDC, this.camera);
 
-    // Priority order: Vertices -> Edges -> Faces
     const targets = [
       ...this.activeSolid.vertexSpheres,
-      ...this.activeSolid.edgeLines,
+      ...this.activeSolid.edgeMeshes,
       ...this.activeSolid.faceMeshes
     ];
     const hits = this.raycaster.intersectObjects(targets, false);
 
-    // Reset previous hover highlight
     if (this.hoveredObject) {
       if (this.hoveredObject.userData.interactType === 'vertex') {
         this.hoveredObject.scale.setScalar(1);
       } else if (this.hoveredObject.userData.interactType === 'edge') {
-        this.hoveredObject.material.opacity = this.hoveredObject.userData.baseOpacity;
+        this.hoveredObject.scale.set(1, 1, 1);
+        this.hoveredObject.userData.strutMat.uniforms.uHoverBoost.value = 0.0;
       }
       this.hoveredObject = null;
     }
@@ -265,13 +317,14 @@ export class Engine {
 
       const type = obj.userData.interactType;
       if (type === 'vertex') {
-        obj.scale.setScalar(1.85);
+        obj.scale.setScalar(1.9);
         this.eventBus.emit('VERTEX_HOVER', {
           vertexIndex: obj.userData.vertexIndex,
           coords: obj.userData.coords
         });
       } else if (type === 'edge') {
-        obj.material.opacity = 1.0;
+        obj.scale.set(1.65, 1, 1.65);
+        obj.userData.strutMat.uniforms.uHoverBoost.value = 1.0;
         this.eventBus.emit('EDGE_HOVER', {
           edgeVertices: obj.userData.edgeVertices
         });
@@ -287,7 +340,7 @@ export class Engine {
   }
 
   _performRaycastClick() {
-    if (!this.activeSolid) return;
+    if (!this.activeSolid || !this.activeSolid.rootGroup.visible) return;
     this.raycaster.setFromCamera(this.pointerNDC, this.camera);
     const hits = this.raycaster.intersectObjects(this.activeSolid.faceMeshes, false);
 
@@ -295,11 +348,9 @@ export class Engine {
       const hit = hits[0];
       const faceMesh = hit.object;
 
-      // Transform hit point to solid-local space for accurate shader ripple origin
       const localHit = this.activeSolid.rootGroup.worldToLocal(hit.point.clone());
       this.triggerPulse(localHit);
 
-      // Compute current world normal of clicked face to align directly toward camera
       const worldNormal = faceMesh.userData.localNormal
         .clone()
         .applyQuaternion(faceMesh.getWorldQuaternion(new THREE.Quaternion()))
@@ -326,7 +377,6 @@ export class Engine {
       this.uniforms.uTime.value = elapsed;
       this.uniforms.uDelta.value = delta;
 
-      // Accumulate elemental energy while user holds pointer down
       if (this.isHolding && this.dragDistance < 10) {
         this.uniforms.uEnergy.value = Math.min(1.0, this.uniforms.uEnergy.value + delta * 0.85);
       } else {
@@ -334,7 +384,6 @@ export class Engine {
       }
       this.eventBus.emit('ENERGY_UPDATE', { energy: this.uniforms.uEnergy.value });
 
-      // Update elemental physics & motion
       if (this.activeSolid) {
         const meta = this.activeSolid.meta;
 
@@ -344,20 +393,17 @@ export class Engine {
             this.targetCameraQuat = null;
           }
         } else if (!this.isDragging) {
-          this.worldPivot.rotation.y += this.angularVelocity.y;
-          this.worldPivot.rotation.x += this.angularVelocity.x;
+          this._applyWorldRotation(this.angularVelocity.x, this.angularVelocity.y);
 
-          // Element-specific angular damping (Earth heavy, Air light)
+          const idleDir = this.angularVelocity.x < 0 ? -1 : 1;
           this.angularVelocity.multiplyScalar(meta.damping);
-          if (this.angularVelocity.length() < 0.0025) {
-            this.angularVelocity.y = 0.0025;
+          if (Math.abs(this.angularVelocity.x) < 0.0025) {
+            this.angularVelocity.x = 0.0025 * idleDir;
           }
         }
 
-        // Characteristic levitation wave
         this.activeSolid.rootGroup.position.y = Math.sin(elapsed * meta.floatSpeed) * meta.floatAmp;
 
-        // Air: Tilt gently in response to cursor wind stream
         if (this.activeSolid.solidId === 'octahedron' && this.pointerNDC.x <= 1) {
           this.activeSolid.rootGroup.rotation.z = THREE.MathUtils.lerp(
             this.activeSolid.rootGroup.rotation.z,
@@ -372,10 +418,9 @@ export class Engine {
           );
         }
 
-        // Aether: Counter-rotate inner celestial wireframe core
-        if (this.activeSolid.innerCore) {
-          this.activeSolid.innerCore.rotation.y = -elapsed * 0.45;
-          this.activeSolid.innerCore.rotation.x = elapsed * 0.25;
+        // Animate interior elemental core
+        if (this.activeSolid.coreAnimator && this.uniforms.uUnfold.value < 0.96) {
+          this.activeSolid.coreAnimator(elapsed, this.uniforms.uEnergy.value);
         }
 
         // Ambient particle dynamics
@@ -384,14 +429,12 @@ export class Engine {
         const speedBoost = 1 + this.uniforms.uEnergy.value * 4.0;
         for (let i = 0; i < seeds.length; i++) {
           if (this.activeSolid.solidId === 'tetrahedron') {
-            // Rising fire embers
-            posAttr.array[i * 3 + 1] += delta * 0.45 * speedBoost;
-            if (posAttr.array[i * 3 + 1] > 1.8) posAttr.array[i * 3 + 1] = -1.4;
+            posAttr.array[i * 3 + 1] += delta * 0.55 * speedBoost;
+            if (posAttr.array[i * 3 + 1] > 1.35) posAttr.array[i * 3 + 1] = -0.55;
           } else {
-            // Orbital drift
             const x = posAttr.array[i * 3];
             const z = posAttr.array[i * 3 + 2];
-            const ang = delta * 0.25 * speedBoost;
+            const ang = delta * 0.28 * speedBoost;
             posAttr.array[i * 3] = x * Math.cos(ang) - z * Math.sin(ang);
             posAttr.array[i * 3 + 2] = x * Math.sin(ang) + z * Math.cos(ang);
           }
@@ -399,14 +442,11 @@ export class Engine {
         posAttr.needsUpdate = true;
       }
 
-      // Smooth camera zoom
       this.cameraDistance = THREE.MathUtils.lerp(this.cameraDistance, this.targetCameraDistance, 0.1);
       this.camera.position.z = this.cameraDistance;
 
-      // Slow celestial background rotation
       this.starField.rotation.y = elapsed * 0.015;
 
-      // Notify active Mathematical Spell Plugins every frame
       this.eventBus.emit('TICK', { elapsed, delta });
 
       this.composer.render();

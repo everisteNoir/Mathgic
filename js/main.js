@@ -4,10 +4,11 @@ import { Engine } from './core/Engine.js';
 import { SpellManager } from './spells/SpellManager.js';
 import { UIController } from './ui/UIController.js';
 
-// Import Mathematical Spell Modules (To add a new spell later, simply import and register it here!)
+// Import Mathgic Spell Modules
 import { DualMorphSpell } from './spells/DualMorphSpell.js';
 import { GoldenRatioSpell } from './spells/GoldenRatioSpell.js';
 import { Tesseract4DSpell } from './spells/Tesseract4DSpell.js';
+import { NonEuclideanSpell } from './spells/NonEuclideanSpell.js';
 
 window.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('canvas-container');
@@ -18,11 +19,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const audioEngine = new AudioEngine();
   const engine = new Engine(container, eventBus);
 
-  // 2. Initialize Plug-and-Play Spell System & register built-in spells
+  // 2. Initialize Plug-and-Play Mathgic System & register modules
   const spellManager = new SpellManager(engine, eventBus, spellsContainer);
   spellManager.register(DualMorphSpell);
   spellManager.register(GoldenRatioSpell);
   spellManager.register(Tesseract4DSpell);
+  spellManager.register(NonEuclideanSpell);
 
   // 3. Initialize UI Controller & restore state from URL hash (if any)
   const ui = new UIController(engine, eventBus, audioEngine, spellManager);
