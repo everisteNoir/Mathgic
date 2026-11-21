@@ -8,6 +8,7 @@ export class UIController {
     this.audio = audioEngine;
     this.spellManager = spellManager;
     this.lastEdgeAudioTime = 0;
+    this.currentSection = 'polyhedra';
 
     this._cacheDOM();
     this._bindEvents();
@@ -16,13 +17,12 @@ export class UIController {
 
   _cacheDOM() {
     this.dockItems = document.querySelectorAll('.dock-item');
-    this.tabBtns = document.querySelectorAll('.tab-btn');
-    this.tabContents = document.querySelectorAll('.tab-content');
+    this.sectionBtns = document.querySelectorAll('.section-btn');
+    this.sectionPanels = document.querySelectorAll('.tab-content');
     this.panel = document.getElementById('grimoire-panel');
 
-    this.btnSolidVis = document.getElementById('btn-solid-vis');
-    this.solidVisIcon = document.getElementById('solid-vis-icon');
-    this.solidVisLabel = document.getElementById('solid-vis-label');
+    this.btnMenu = document.getElementById('btn-menu');
+    this.sideMenu = document.getElementById('side-menu');
 
     this.btnTogglePanel = document.getElementById('btn-toggle-panel');
     this.btnAudio = document.getElementById('btn-audio');
@@ -56,13 +56,6 @@ export class UIController {
     this.dockItems.forEach((btn) => {
       btn.addEventListener('click', () => {
         const solidId = btn.dataset.solid;
-        // If user clicks a Platonic element while a hyper-spatial portal is active,
-        // automatically turn off the portal so they immediately see the selected element
-        for (const spell of this.spellManager.spells.values()) {
-          if (spell.active && spell.isolateStage) {
-            this.spellManager.setSpellActive(spell.id, false);
-          }
-        }
         this.engine.setManualSolidVisible(true);
         this.engine.loadSolid(solidId);
         this.audio.playResonance(this.engine.activeSolid?.meta.baseFreq || 150);
@@ -70,19 +63,12 @@ export class UIController {
       });
     });
 
-    // Toggle Solid Frame Visibility manually
-    this.btnSolidVis.addEventListener('click', () => {
-      const next = !this.engine.manualSolidVisible;
-      this.engine.setManualSolidVisible(next);
-      this.showToast(next ? 'Platonic solid frame visible' : 'Platonic solid frame hidden');
-    });
-
-    // Switch tabs inside Mathgic Panel
-    this.tabBtns.forEach((btn) => {
+    // Left side menu: hidden by default, closes itself after a section is chosen
+    this.btnMenu.addEventListener('click', () => this.toggleMenu());
+    this.sectionBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const target = btn.dataset.tab;
-        this.tabBtns.forEach((b) => b.classList.toggle('active', b === btn));
-        this.tabContents.forEach((c) => c.classList.toggle('active', c.id === target));
+        this.setSection(btn.dataset.section);
+        this.toggleMenu(false);
       });
     });
 
@@ -120,16 +106,6 @@ export class UIController {
   }
 
   _bindEngineTelemetry() {
-    this.eventBus.on('SOLID_VISIBILITY_CHANGED', ({ visible, autoHidden }) => {
-      this.solidVisIcon.textContent = visible ? '👁️' : '🙈';
-      this.solidVisLabel.textContent = autoHidden
-        ? 'Portal Mode'
-        : visible
-          ? 'Solid: On'
-          : 'Solid: Off';
-      this.btnSolidVis.classList.toggle('muted-state', !visible);
-    });
-
     this.eventBus.on('SOLID_CHANGED', ({ solidId, meta, geoData }) => {
       this.dockItems.forEach((b) => b.classList.toggle('active', b.dataset.solid === solidId));
 
@@ -200,6 +176,39 @@ export class UIController {
     });
   }
 
+  toggleMenu(open = this.sideMenu.classList.contains('collapsed')) {
+    this.sideMenu.classList.toggle('collapsed', !open);
+    this.btnMenu.setAttribute('aria-expanded', String(open));
+  }
+
+  /**
+   * Shows exactly one section: 'polyhedra' (no spell active) or a spell id.
+   * Portal spells hide the Platonic solid (and the solid dock); inscribed spells keep it visible as their base.
+   */
+  setSection(sectionId) {
+    if (sectionId !== 'polyhedra' && !this.spellManager.spells.has(sectionId)) {
+      sectionId = 'polyhedra';
+    }
+    this.currentSection = sectionId;
+
+    // Decide first (before any spell activates) whether this section shows a polyhedron at all
+    const target = this.spellManager.spells.get(sectionId);
+    this.engine.setStageSolidVisible(!target?.isolateStage);
+
+    this.sectionBtns.forEach((b) => b.classList.toggle('active', b.dataset.section === sectionId));
+    this.sectionPanels.forEach((c) => c.classList.toggle('active', c.id === `panel-${sectionId}`));
+
+    // Deactivate every other spell first, then activate the one belonging to this section
+    for (const spell of this.spellManager.spells.values()) {
+      if (spell.id !== sectionId) this.spellManager.setSpellActive(spell.id, false);
+    }
+    const spell = this.spellManager.spells.get(sectionId);
+    if (spell) this.spellManager.setSpellActive(spell.id, true);
+
+    document.body.dataset.stage = spell?.isolateStage ? 'portal' : 'solid';
+    this.syncURLState();
+  }
+
   syncURLState() {
     const params = new URLSearchParams();
     if (this.engine.activeSolid) {
@@ -209,9 +218,8 @@ export class UIController {
     if (unfold > 0.01) {
       params.set('unfold', unfold.toFixed(2));
     }
-    const spells = this.spellManager.getActiveSpellIds();
-    if (spells.length > 0) {
-      params.set('spells', spells.join(','));
+    if (this.currentSection !== 'polyhedra') {
+      params.set('section', this.currentSection);
     }
     window.history.replaceState(null, '', `#${params.toString()}`);
   }
@@ -220,6 +228,7 @@ export class UIController {
     const hash = window.location.hash.replace(/^#/, '');
     if (!hash) {
       this.engine.loadSolid('tetrahedron');
+      this.setSection('polyhedra');
       return;
     }
     const params = new URLSearchParams(hash);
@@ -233,10 +242,9 @@ export class UIController {
       this.engine.setUnfold(unfold);
     }
 
-    const spells = params.get('spells');
-    if (spells) {
-      spells.split(',').forEach((id) => this.spellManager.setSpellActive(id, true));
-    }
+    // 'spells' is the legacy parameter from the tabbed layout: open the first listed spell as its section
+    const legacySpell = (params.get('spells') || '').split(',')[0];
+    this.setSection(params.get('section') || legacySpell || 'polyhedra');
   }
 
   showToast(message) {

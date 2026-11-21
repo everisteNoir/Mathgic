@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./css/style.css" />
+  <link rel="stylesheet" href="./css/style.css?v=5" />
 
   <!-- ImportMap enables zero-build ES Modules directly in browsers & Cloudflare Pages -->
   <script type="importmap">
@@ -26,7 +26,7 @@
   <!-- Top Navigation Bar -->
   <header class="top-bar">
     <div class="brand">
-      <div class="brand-sigil" aria-hidden="true">❖</div>
+      <button id="btn-menu" class="brand-sigil" title="Open or close the section menu" aria-label="Menu" aria-expanded="false" aria-controls="side-menu">☰</button>
       <div>
         <h1 class="brand-title">MATHGIC</h1>
         <p class="brand-subtitle">Sacred Geometry, Elemental Cores &amp; Non-Euclidean Space</p>
@@ -34,10 +34,6 @@
     </div>
 
     <div class="top-actions">
-      <button id="btn-solid-vis" class="glass-btn" title="Show or hide the central Platonic wireframe solid">
-        <span class="icon" id="solid-vis-icon">👁️</span>
-        <span class="label" id="solid-vis-label">Solid: On</span>
-      </button>
       <button id="btn-audio" class="glass-btn" title="Toggle harmonic chimes on geometric interaction">
         <span class="icon" id="audio-icon">🔇</span>
         <span class="label">Audio</span>
@@ -53,6 +49,32 @@
     </div>
   </header>
 
+  <!-- Left Side Menu (hidden by default): choose a section. Only Polyhedra / Dual Morph show a solid. -->
+  <aside id="side-menu" class="side-menu collapsed" aria-label="Sections">
+    <div class="side-menu-title">Sections</div>
+    <button class="section-btn active" data-section="polyhedra">
+      <span class="section-icon">△</span>
+      <span class="section-text"><span class="section-name">Polyhedra</span><span class="section-sub">The 5 Platonic solids</span></span>
+    </button>
+    <button class="section-btn" data-section="dual-morph">
+      <span class="section-icon">🔮</span>
+      <span class="section-text"><span class="section-name">Dual Morph</span><span class="section-sub">A solid and its dual twin</span></span>
+    </button>
+    <button class="section-btn" data-section="golden-ratio">
+      <span class="section-icon">📐</span>
+      <span class="section-text"><span class="section-name">Golden Ratio</span><span class="section-sub">φ in rectangles, spirals &amp; seeds</span></span>
+    </button>
+    <button class="section-btn" data-section="tesseract-4d">
+      <span class="section-icon">🌌</span>
+      <span class="section-text"><span class="section-name">Tesseract 4D</span><span class="section-sub">A hypercube turning inside out</span></span>
+    </button>
+    <button class="section-btn" data-section="non-euclidean">
+      <span class="section-icon">🌀</span>
+      <span class="section-text"><span class="section-name">Non-Euclidean</span><span class="section-sub">Curved space &amp; geodesics</span></span>
+    </button>
+    <div class="side-menu-build">Build 5</div>
+  </aside>
+
   <!-- Live Interaction Telemetry HUD (Bottom Left) -->
   <aside id="telemetry-hud" class="telemetry-hud">
     <div class="telemetry-badge" id="telemetry-type">GEOMETRIC EXPLORATION</div>
@@ -65,13 +87,8 @@
 
   <!-- Right Mathgic Control Panel (Collapsible) -->
   <aside id="grimoire-panel" class="grimoire-panel">
-    <div class="panel-tabs">
-      <button class="tab-btn active" data-tab="tab-element">Platonic Elements</button>
-      <button class="tab-btn" data-tab="tab-spells">Mathgic Spells</button>
-    </div>
-
-    <!-- TAB 1: Platonic Philosophy & 2D Net Unfolding -->
-    <div id="tab-element" class="tab-content active">
+    <!-- SECTION: Polyhedra — Platonic philosophy & 2D net unfolding -->
+    <div id="panel-polyhedra" class="tab-content active">
       <div class="solid-header">
         <span class="element-pill" id="info-element-badge">FIRE • PYR</span>
         <h2 id="info-solid-name">Tetrahedron</h2>
@@ -132,19 +149,31 @@
       </div>
     </div>
 
-    <!-- TAB 2: Mathgic Spell Plugins (Auto-generated from js/spells/) -->
-    <div id="tab-spells" class="tab-content">
+    <!-- SECTIONS: one per Mathgic spell. SpellManager.js injects each spell card into its own panel. -->
+    <div id="panel-dual-morph" class="tab-content">
       <p class="panel-intro">
-        Activate <strong>Mathgic Modules</strong> below. Inscribed spells nest inside the transparent polyhedron; hyper-spatial portals automatically clear the stage for unobstructed viewing.
+        This module nests inside the transparent polyhedron. Pick the base solid from the dock below.
       </p>
-      <div id="spells-container" class="spells-container">
-        <!-- SpellManager.js dynamically injects spell cards here -->
-      </div>
+    </div>
+    <div id="panel-golden-ratio" class="tab-content">
+      <p class="panel-intro">
+        A standalone exploration of φ = 1.618… Choose a pattern below; no polyhedron is shown here.
+      </p>
+    </div>
+    <div id="panel-tesseract-4d" class="tab-content">
+      <p class="panel-intro">
+        A standalone hyper-spatial portal. The Platonic solid is hidden so nothing overlaps.
+      </p>
+    </div>
+    <div id="panel-non-euclidean" class="tab-content">
+      <p class="panel-intro">
+        A standalone hyper-spatial portal. The Platonic solid is hidden so nothing overlaps.
+      </p>
     </div>
   </aside>
 
-  <!-- Bottom 5 Platonic Solids Dock -->
-  <nav class="element-dock" aria-label="Select Platonic solid">
+  <!-- Bottom 5 Platonic Solids Dock (shown in Polyhedra and in sections that inscribe a spell inside a solid) -->
+  <nav class="element-dock" id="element-dock" aria-label="Select Platonic solid">
     <button class="dock-item active" data-solid="tetrahedron" style="--accent: #ff5722;">
       <span class="dock-symbol">△</span>
       <span class="dock-name">Fire</span>
@@ -176,6 +205,6 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <!-- Launch ES Module Application -->
-  <script type="module" src="./js/main.js"></script>
+  <script type="module" src="./js/main.js?v=5"></script>
 </body>
 </html>

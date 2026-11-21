@@ -113,13 +113,15 @@ export function getSolidGeometryData(id) {
   let faces = [];
 
   if (id === 'tetrahedron') {
-    const s = 1 / Math.sqrt(3);
-    rawVertices = [
-      [1, 1, 1],
-      [1, -1, -1],
-      [-1, 1, -1],
-      [-1, -1, 1]
-    ].map(([x, y, z]) => new THREE.Vector3(x * s, y * s, z * s));
+    // Upright orientation: apex (vertex 0) points up (+Y), the triangular base (face 3) lies flat facing down.
+    // Circumradius = 1, so the base plane sits at y = -1/3 and its vertices have radius sqrt(8)/3.
+    const baseY = -1 / 3;
+    const baseR = Math.sqrt(8) / 3;
+    rawVertices = [new THREE.Vector3(0, 1, 0)];
+    for (let k = 0; k < 3; k++) {
+      const a = Math.PI / 2 + (k * 2 * Math.PI) / 3;
+      rawVertices.push(new THREE.Vector3(baseR * Math.cos(a), baseY, baseR * Math.sin(a)));
+    }
     faces = [
       [0, 1, 2],
       [0, 2, 3],
@@ -293,9 +295,16 @@ export function getSolidGeometryData(id) {
     return c.divideScalar(face.length);
   });
 
-  // Build BFS Spanning Hinge Tree for exact 2D net unfolding
-  const visited = new Set([0]);
-  const queue = [0];
+  // Build BFS Spanning Hinge Tree for exact 2D net unfolding.
+  // The tetrahedron's net unfolds from its downward-facing base so it flattens onto the ground plane.
+  let rootFace = 0;
+  if (id === 'tetrahedron') {
+    faceNormals.forEach((n, i) => {
+      if (n.y < faceNormals[rootFace].y) rootFace = i;
+    });
+  }
+  const visited = new Set([rootFace]);
+  const queue = [rootFace];
   const hingeTree = Array.from({ length: faces.length }, (_, i) => ({
     faceIndex: i,
     parentIndex: -1,

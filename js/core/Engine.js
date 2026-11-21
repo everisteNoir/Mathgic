@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { createGlobalUniforms } from './Uniforms.js';
-import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js';
+import { createGlobalUniforms } from './Uniforms.js?v=5';
+import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js?v=5';
 
 const WORLD_X = new THREE.Vector3(1, 0, 0);
 const WORLD_Y = new THREE.Vector3(0, 1, 0);
@@ -27,6 +27,7 @@ export class Engine {
 
     // Stage visibility controls (prevents overlapping with hyper-spatial Mathgic modules)
     this.manualSolidVisible = true;
+    this.stageSolidVisible = true; // set by the active section: false in sections that must not show any polyhedron
     this.portalAutoHideCount = 0;
 
     // Inertial world-space angular velocity: x = yaw (World Y), y = pitch (World X)
@@ -133,11 +134,16 @@ export class Engine {
   }
 
   isSolidEffectivelyVisible() {
-    return this.manualSolidVisible && this.portalAutoHideCount === 0;
+    return this.manualSolidVisible && this.stageSolidVisible && this.portalAutoHideCount === 0;
   }
 
   setManualSolidVisible(visible) {
     this.manualSolidVisible = visible;
+    this._syncSolidVisibility();
+  }
+
+  setStageSolidVisible(visible) {
+    this.stageSolidVisible = visible;
     this._syncSolidVisibility();
   }
 
@@ -156,6 +162,8 @@ export class Engine {
     if (this.activeSolid) {
       this.activeSolid.rootGroup.visible = vis;
     }
+    const id = this.activeSolid?.solidId;
+    this.gridHelper.visible = vis && (id === 'cube' || id === 'dodecahedron');
     this.eventBus.emit('SOLID_VISIBILITY_CHANGED', {
       visible: vis,
       autoHidden: this.portalAutoHideCount > 0
@@ -178,7 +186,11 @@ export class Engine {
     this.uniforms.uEnergy.value = 0;
     built.setUnfold(this.uniforms.uUnfold.value);
 
-    this.gridHelper.visible = (solidId === 'cube' || solidId === 'dodecahedron') && this.portalAutoHideCount === 0;
+    // Tetrahedron default pose: base face down, apex up
+    if (solidId === 'tetrahedron') {
+      this.targetCameraQuat = new THREE.Quaternion();
+    }
+
     this._syncSolidVisibility();
 
     this.eventBus.emit('SOLID_CHANGED', {
@@ -189,7 +201,9 @@ export class Engine {
   }
 
   setUnfold(value) {
+    const prev = this.uniforms.uUnfold.value;
     this.uniforms.uUnfold.value = value;
+    if (prev < 0.995 && value >= 0.995) this.triggerPulse(new THREE.Vector3(0, 0, 0));
     if (this.activeSolid) {
       this.activeSolid.setUnfold(value);
     }
@@ -403,6 +417,7 @@ export class Engine {
         }
 
         this.activeSolid.rootGroup.position.y = Math.sin(elapsed * meta.floatSpeed) * meta.floatAmp;
+        this.activeSolid.updateUpright();
 
         if (this.activeSolid.solidId === 'octahedron' && this.pointerNDC.x <= 1) {
           this.activeSolid.rootGroup.rotation.z = THREE.MathUtils.lerp(
@@ -419,18 +434,20 @@ export class Engine {
         }
 
         // Animate interior elemental core
-        if (this.activeSolid.coreAnimator && this.uniforms.uUnfold.value < 0.96) {
+        if (this.activeSolid.coreAnimator) {
           this.activeSolid.coreAnimator(elapsed, this.uniforms.uEnergy.value);
         }
 
         // Ambient particle dynamics
         const posAttr = this.activeSolid.particles.geometry.attributes.position;
         const seeds = this.activeSolid.particleSeeds;
-        const speedBoost = 1 + this.uniforms.uEnergy.value * 4.0;
+        const unfoldK = this.uniforms.uUnfold.value;
+        const speedBoost = 1 + this.uniforms.uEnergy.value * 4.0 + unfoldK * 5.0;
+        const emberTop = 0.95 + unfoldK * 1.6; // embers of the Fire core rise higher as the net opens
         for (let i = 0; i < seeds.length; i++) {
           if (this.activeSolid.solidId === 'tetrahedron') {
             posAttr.array[i * 3 + 1] += delta * 0.55 * speedBoost;
-            if (posAttr.array[i * 3 + 1] > 1.35) posAttr.array[i * 3 + 1] = -0.55;
+            if (posAttr.array[i * 3 + 1] > emberTop) posAttr.array[i * 3 + 1] = -0.3;
           } else {
             const x = posAttr.array[i * 3];
             const z = posAttr.array[i * 3 + 2];

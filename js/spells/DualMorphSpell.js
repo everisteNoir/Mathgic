@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PLATONIC_DATA, getSolidGeometryData } from '../solids/PlatonicMath.js';
+import { PLATONIC_DATA, getSolidGeometryData } from '../solids/PlatonicMath.js?v=5';
 
 /**
  * DualMorphSpell.js — Mathgic 1: Dual Polyhedron Morphing (Inscribed)

@@ -76,6 +76,17 @@ html, body {
   font-size: 20px;
   color: #fbbf24;
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.22);
+  cursor: pointer;
+  transition: box-shadow 0.25s ease, background 0.25s ease, transform 0.25s ease;
+}
+
+.brand-sigil:hover {
+  box-shadow: 0 0 26px rgba(245, 158, 11, 0.5);
+  transform: translateY(-1px);
+}
+
+.brand-sigil[aria-expanded="true"] {
+  background: radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.6), rgba(15, 23, 42, 0.85));
 }
 
 .brand-title {
@@ -124,10 +135,6 @@ html, body {
 .glass-btn.primary-glow {
   border-color: rgba(245, 158, 11, 0.5);
   box-shadow: 0 0 18px rgba(245, 158, 11, 0.2);
-}
-
-.glass-btn.muted-state {
-  opacity: 0.65;
 }
 
 /* --- Telemetry HUD (Bottom Left) --- */
@@ -218,33 +225,100 @@ html, body {
   pointer-events: none;
 }
 
-.panel-tabs {
+/* --- Left Side Menu (hidden by default) --- */
+.side-menu {
+  position: fixed;
+  top: 76px;
+  left: 24px;
+  width: 270px;
+  max-width: calc(100vw - 48px);
+  z-index: 12;
   display: flex;
-  border-bottom: 1px solid var(--glass-border);
-  background: rgba(5, 8, 18, 0.5);
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
 }
 
-.tab-btn {
-  flex: 1;
-  padding: 13px 10px;
-  background: transparent;
-  border: none;
+.side-menu.collapsed {
+  transform: translateX(calc(-100% - 40px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.side-menu-title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 600;
+  padding: 2px 8px 8px;
+}
+
+.section-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  text-align: left;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
 }
 
-.tab-btn:hover {
+.section-btn:hover {
   color: #fff;
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.tab-btn.active {
-  color: #fbbf24;
-  border-bottom-color: #fbbf24;
-  background: rgba(245, 158, 11, 0.06);
+.section-btn.active {
+  color: #fff;
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.section-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.section-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.side-menu-build {
+  margin-top: 6px;
+  padding: 6px 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.section-sub {
+  font-size: 0.7rem;
+  opacity: 0.7;
 }
 
 .tab-content {
@@ -436,18 +510,12 @@ input[type="range"]::-webkit-slider-thumb:hover {
   transform: translateY(-1px);
 }
 
-/* --- Spells Tab --- */
+/* --- Spell Sections --- */
 .panel-intro {
   font-size: 0.78rem;
   color: var(--text-muted);
   line-height: 1.45;
   margin-bottom: 14px;
-}
-
-.spells-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .spell-card {
@@ -499,49 +567,6 @@ input[type="range"]::-webkit-slider-thumb:hover {
   margin-top: 5px;
 }
 
-.spell-toggle {
-  position: relative;
-  width: 40px;
-  height: 22px;
-  flex-shrink: 0;
-}
-
-.spell-toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.spell-toggle-slider {
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: 0.25s;
-}
-
-.spell-toggle-slider::before {
-  content: "";
-  position: absolute;
-  height: 16px;
-  width: 16px;
-  left: 3px;
-  bottom: 3px;
-  background: #fff;
-  border-radius: 50%;
-  transition: 0.25s;
-}
-
-.spell-toggle input:checked + .spell-toggle-slider {
-  background: #a855f7;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.6);
-}
-
-.spell-toggle input:checked + .spell-toggle-slider::before {
-  transform: translateX(18px);
-}
-
 .spell-controls {
   margin-top: 12px;
   padding-top: 10px;
@@ -563,6 +588,35 @@ input[type="range"]::-webkit-slider-thumb:hover {
   padding: 6px 9px;
   border-radius: 8px;
   border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.choice-btn {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.choice-btn:hover {
+  color: #fff;
+}
+
+.choice-btn.active {
+  color: #fef3c7;
+  border-color: rgba(251, 191, 36, 0.6);
+  background: rgba(245, 158, 11, 0.18);
 }
 
 /* --- Bottom Element Dock --- */
@@ -630,6 +684,15 @@ input[type="range"]::-webkit-slider-thumb:hover {
   margin-top: 1px;
 }
 
+/* Portal sections (Tesseract, Non-Euclidean) hide the solid, so the solid dock is hidden too */
+body[data-stage="portal"] .element-dock {
+  display: none;
+}
+
+body[data-stage="portal"] .telemetry-hud {
+  bottom: 24px;
+}
+
 /* --- Toast --- */
 .toast {
   position: fixed;
@@ -666,6 +729,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
     bottom: 94px;
     max-width: none;
     padding: 9px 12px;
+  }
+
+  .side-menu {
+    top: 68px;
+    left: 12px;
   }
 
   .grimoire-panel {
