@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Platonic Grimoire — Sacred Geometry &amp; Mathematical Sorcery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css" />
+
+  <!-- ImportMap enables zero-build ES Modules directly in browsers & Cloudflare Pages -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Fullscreen 3D Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="top-bar">
+    <div class="brand">
+      <div class="brand-sigil" aria-hidden="true">❖</div>
+      <div>
+        <h1 class="brand-title">PLATONIC GRIMOIRE</h1>
+        <p class="brand-subtitle">The Five Timaeus Elements &amp; Mathematical Laboratory</p>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <button id="btn-audio" class="glass-btn" title="Toggle harmonic chimes on geometric interaction">
+        <span class="icon" id="audio-icon">🔇</span>
+        <span class="label">Audio</span>
+      </button>
+      <button id="btn-share" class="glass-btn" title="Copy link to current geometric state">
+        <span class="icon">🔗</span>
+        <span class="label">Share View</span>
+      </button>
+      <button id="btn-toggle-panel" class="glass-btn primary-glow" title="Open/Close Mathematical Grimoire">
+        <span class="icon">✦</span>
+        <span class="label">Decode &amp; Spells</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Live Interaction Telemetry HUD (Bottom Left) -->
+  <aside id="telemetry-hud" class="telemetry-hud">
+    <div class="telemetry-badge" id="telemetry-type">GEOMETRIC EXPLORATION</div>
+    <div class="telemetry-main" id="telemetry-main">Drag to rotate • Touch vertices, edges, or faces</div>
+    <div class="telemetry-sub" id="telemetry-sub">Click &amp; hold to charge elemental energy</div>
+    <div class="charge-bar-wrap" id="charge-bar-wrap">
+      <div class="charge-bar-fill" id="charge-bar-fill"></div>
+    </div>
+  </aside>
+
+  <!-- Right Grimoire Control Panel (Collapsible) -->
+  <aside id="grimoire-panel" class="grimoire-panel">
+    <div class="panel-tabs">
+      <button class="tab-btn active" data-tab="tab-element">Elements &amp; Geometry</button>
+      <button class="tab-btn" data-tab="tab-spells">Mathematical Spells</button>
+    </div>
+
+    <!-- TAB 1: Platonic Philosophy & 2D Net Unfolding -->
+    <div id="tab-element" class="tab-content active">
+      <div class="solid-header">
+        <span class="element-pill" id="info-element-badge">FIRE • PYR</span>
+        <h2 id="info-solid-name">Tetrahedron</h2>
+      </div>
+
+      <p class="philosophy-quote" id="info-philosophy">
+        “Among regular solids, the tetrahedron has the sharpest angles and smallest volume-to-surface ratio — Plato assigned it to Fire for its piercing heat and swift motion.”
+      </p>
+
+      <!-- Visual Euler Formula -->
+      <div class="euler-box">
+        <div class="euler-title">Euler's Polyhedron Formula: <span>V − E + F = 2</span></div>
+        <div class="euler-grid">
+          <div class="euler-stat">
+            <span class="stat-val" id="stat-v">4</span>
+            <span class="stat-lbl">Vertices (V)</span>
+          </div>
+          <div class="euler-op">−</div>
+          <div class="euler-stat">
+            <span class="stat-val" id="stat-e">6</span>
+            <span class="stat-lbl">Edges (E)</span>
+          </div>
+          <div class="euler-op">+</div>
+          <div class="euler-stat">
+            <span class="stat-val" id="stat-f">4</span>
+            <span class="stat-lbl">Faces (F)</span>
+          </div>
+          <div class="euler-op">=</div>
+          <div class="euler-stat result">
+            <span class="stat-val">2</span>
+            <span class="stat-lbl">Invariant</span>
+          </div>
+        </div>
+        <div class="face-shape-note" id="info-face-shape">4 equilateral triangles • Dual: Self-dual</div>
+      </div>
+
+      <!-- 2D Net Unfolding Slider -->
+      <div class="control-group">
+        <div class="control-header">
+          <label for="slider-unfold">2D Geometric Net Unfolding</label>
+          <span class="control-val" id="val-unfold">0%</span>
+        </div>
+        <input type="range" id="slider-unfold" min="0" max="1" step="0.005" value="0" />
+        <p class="control-hint">Drag the slider to unhinge edges and unfold the 3D polyhedron flat onto a 2D plane.</p>
+      </div>
+
+      <!-- Signature Elemental Interaction -->
+      <div class="control-group">
+        <div class="control-header">
+          <label>Elemental Interaction</label>
+        </div>
+        <p class="control-hint" id="info-interaction-tip">
+          Click &amp; hold on the solid to build thermal charge from crimson to white-hot; touch edges to pluck harmonic notes.
+        </p>
+        <button id="btn-element-pulse" class="action-btn">
+          ✦ Trigger Elemental Resonance
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 2: Mathematical Spell Plugins (Auto-generated from js/spells/) -->
+    <div id="tab-spells" class="tab-content">
+      <p class="panel-intro">
+        Activate the <strong>Mathematical Spell Modules</strong> below. The modular plugin architecture allows you to attach new mathematical phenomena anytime.
+      </p>
+      <div id="spells-container" class="spells-container">
+        <!-- SpellManager.js dynamically injects spell cards here -->
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom 5 Platonic Solids Dock -->
+  <nav class="element-dock" aria-label="Select Platonic solid">
+    <button class="dock-item active" data-solid="tetrahedron" style="--accent: #ff5722;">
+      <span class="dock-symbol">△</span>
+      <span class="dock-name">Fire</span>
+      <span class="dock-sub">4 Faces</span>
+    </button>
+    <button class="dock-item" data-solid="cube" style="--accent: #10b981;">
+      <span class="dock-symbol">□</span>
+      <span class="dock-name">Earth</span>
+      <span class="dock-sub">6 Faces</span>
+    </button>
+    <button class="dock-item" data-solid="octahedron" style="--accent: #38bdf8;">
+      <span class="dock-symbol">◇</span>
+      <span class="dock-name">Air</span>
+      <span class="dock-sub">8 Faces</span>
+    </button>
+    <button class="dock-item" data-solid="icosahedron" style="--accent: #3b82f6;">
+      <span class="dock-symbol">▽</span>
+      <span class="dock-name">Water</span>
+      <span class="dock-sub">20 Faces</span>
+    </button>
+    <button class="dock-item" data-solid="dodecahedron" style="--accent: #c084fc;">
+      <span class="dock-symbol">⬠</span>
+      <span class="dock-name">Aether</span>
+      <span class="dock-sub">12 Faces</span>
+    </button>
+  </nav>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Launch ES Module Application -->
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
