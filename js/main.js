@@ -1,14 +1,15 @@
-import { EventBus } from './core/EventBus.js?v=5';
-import { AudioEngine } from './core/AudioEngine.js?v=5';
-import { Engine } from './core/Engine.js?v=5';
-import { SpellManager } from './spells/SpellManager.js?v=5';
-import { UIController } from './ui/UIController.js?v=5';
+import { EventBus } from './core/EventBus.js?v=7';
+import { AudioEngine } from './core/AudioEngine.js?v=7';
+import { Engine } from './core/Engine.js?v=7';
+import { SpellManager } from './spells/SpellManager.js?v=7';
+import { UIController } from './ui/UIController.js?v=7';
 
 // Import Mathgic Spell Modules
-import { DualMorphSpell } from './spells/DualMorphSpell.js?v=5';
-import { GoldenRatioSpell } from './spells/GoldenRatioSpell.js?v=5';
-import { Tesseract4DSpell } from './spells/Tesseract4DSpell.js?v=5';
-import { NonEuclideanSpell } from './spells/NonEuclideanSpell.js?v=5';
+import { DualMorphSpell } from './spells/DualMorphSpell.js?v=7';
+import { GoldenRatioSpell } from './spells/GoldenRatioSpell.js?v=7';
+import { Tesseract4DSpell } from './spells/Tesseract4DSpell.js?v=7';
+import { NonEuclideanSpell } from './spells/NonEuclideanSpell.js?v=7';
+import { ProjectionSpell } from './spells/ProjectionSpell.js?v=7';
 
 window.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('canvas-container');
@@ -23,6 +24,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const spellManager = new SpellManager(engine, eventBus, panel);
   spellManager.register(DualMorphSpell);
   spellManager.register(GoldenRatioSpell);
+  spellManager.register(ProjectionSpell);
   spellManager.register(Tesseract4DSpell);
   spellManager.register(NonEuclideanSpell);
 

@@ -7,7 +7,6 @@ import * as THREE from 'three';
  */
 export const Tesseract4DSpell = {
   id: 'tesseract-4d',
-  icon: '🌌',
   name: '4D Hypercube Portal (Tesseract)',
   isolateStage: true,
   description:

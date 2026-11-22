@@ -9,7 +9,6 @@ import * as THREE from 'three';
  */
 export const NonEuclideanSpell = {
   id: 'non-euclidean',
-  icon: '🌀',
   name: 'Non-Euclidean Space (Curvature K)',
   isolateStage: true,
   hasLiveReadout: true,

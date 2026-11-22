@@ -8,10 +8,14 @@ import * as THREE from 'three';
  * 2. Set `isolateStage: true` if it is a standalone spatial portal (auto-hides the central Platonic solid),
  *    or `isolateStage: false` if it inscribes inside the transparent Platonic solid.
  * 3. Import and register it in `js/main.js` via `spellManager.register(YourSpell)`.
+ * 4. Give it a place in the menu: add a `<button class="section-btn" data-section="your-id">` to `#side-menu`
+ *    and an empty `<div id="panel-your-id" class="tab-content"></div>` inside `#grimoire-panel` in `index.html`.
+ *
+ * Control types: a slider (default), `type: 'choice'` (options: [{ value, label }]) and `type: 'toggle'`.
+ * Any control may define `showWhen: (params) => boolean` to appear only in certain modes.
  */
 export const TemplateSpell = {
   id: 'template-spell',
-  icon: '✨',
   name: 'New Mathgic Module',
   isolateStage: false,
   description: 'Short description of the mathematical phenomenon this module manifests.',

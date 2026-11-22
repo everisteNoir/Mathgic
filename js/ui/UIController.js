@@ -1,6 +1,9 @@
 /**
  * UIController.js — User Interface, Telemetry HUD & URL State Serialization
  */
+import { fxState } from '../core/FXState.js?v=7';
+import { FantasyUI } from './FantasyUI.js?v=7';
+
 export class UIController {
   constructor(engine, eventBus, audioEngine, spellManager) {
     this.engine = engine;
@@ -9,6 +12,7 @@ export class UIController {
     this.spellManager = spellManager;
     this.lastEdgeAudioTime = 0;
     this.currentSection = 'polyhedra';
+    this.fantasy = new FantasyUI(audioEngine);
 
     this._cacheDOM();
     this._bindEvents();
@@ -26,7 +30,8 @@ export class UIController {
 
     this.btnTogglePanel = document.getElementById('btn-toggle-panel');
     this.btnAudio = document.getElementById('btn-audio');
-    this.audioIcon = document.getElementById('audio-icon');
+    this.audioLabel = document.getElementById('audio-label');
+    this.btnFx = document.getElementById('btn-fx');
     this.btnShare = document.getElementById('btn-share');
     this.btnPulse = document.getElementById('btn-element-pulse');
 
@@ -72,13 +77,25 @@ export class UIController {
       });
     });
 
+    // Effects switch: remembered between visits
+    const paintFx = () => {
+      this.btnFx.textContent = fxState.enabled ? 'FX: On' : 'FX: Off';
+    };
+    paintFx();
+    fxState.applyToBody();
+    this.btnFx.addEventListener('click', () => {
+      const on = fxState.toggle();
+      paintFx();
+      this.showToast(on ? 'Visual effects awakened' : 'Static mode: effects are resting');
+    });
+
     this.btnTogglePanel.addEventListener('click', () => {
       this.panel.classList.toggle('collapsed');
     });
 
     this.btnAudio.addEventListener('click', () => {
       const enabled = this.audio.toggle();
-      this.audioIcon.textContent = enabled ? '🔊' : '🔇';
+      this.audioLabel.textContent = enabled ? 'Sound: Resonant' : 'Sound: Silent';
       this.showToast(enabled ? 'Harmonic geometric audio enabled' : 'Audio muted');
     });
 
@@ -109,6 +126,9 @@ export class UIController {
     this.eventBus.on('SOLID_CHANGED', ({ solidId, meta, geoData }) => {
       this.dockItems.forEach((b) => b.classList.toggle('active', b.dataset.solid === solidId));
 
+      [this.infoBadge, this.infoName, this.infoPhilosophy, this.infoFaceShape, this.infoTip].forEach((el) =>
+        this.fantasy.retrigger(el)
+      );
       this.infoBadge.textContent = `${meta.element.toUpperCase()} • ${meta.elementGreek}`;
       this.infoBadge.style.color = meta.secondaryColor;
       this.infoName.textContent = meta.name;
@@ -157,7 +177,13 @@ export class UIController {
       this.telSub.textContent = 'Scroll wheel to zoom in and out of space';
     });
 
+    this.eventBus.on('CHARGE_RELEASE', ({ energy }) => {
+      const meta = this.engine.activeSolid?.meta;
+      this.audio.playRelease(meta?.baseFreq, energy);
+    });
+
     this.eventBus.on('ENERGY_UPDATE', ({ energy }) => {
+      this.audio.setCharge(energy, this.engine.activeSolid?.meta?.baseFreq);
       if (energy > 0.02) {
         this.chargeWrap.classList.add('active');
         this.chargeFill.style.width = `${Math.round(energy * 100)}%`;
@@ -186,9 +212,12 @@ export class UIController {
    * Portal spells hide the Platonic solid (and the solid dock); inscribed spells keep it visible as their base.
    */
   setSection(sectionId) {
-    if (sectionId !== 'polyhedra' && !this.spellManager.spells.has(sectionId)) {
+    // Only real section spells are sections; user-toggled ones (Dual Twin) belong to Polyhedra
+    const candidate = this.spellManager.spells.get(sectionId);
+    if (sectionId !== 'polyhedra' && (!candidate || candidate.userToggle)) {
       sectionId = 'polyhedra';
     }
+    if (sectionId !== this.currentSection) this.fantasy.portalTransition();
     this.currentSection = sectionId;
 
     // Decide first (before any spell activates) whether this section shows a polyhedron at all
@@ -200,7 +229,13 @@ export class UIController {
 
     // Deactivate every other spell first, then activate the one belonging to this section
     for (const spell of this.spellManager.spells.values()) {
-      if (spell.id !== sectionId) this.spellManager.setSpellActive(spell.id, false);
+      if (spell.userToggle) {
+        // Dual Twin lives in Polyhedra: it vanishes instantly when you leave, and returns if you had summoned it
+        const show = sectionId === 'polyhedra' && spell.wanted;
+        this.spellManager.setSpellActive(spell.id, show, { instant: sectionId !== 'polyhedra' });
+      } else if (spell.id !== sectionId) {
+        this.spellManager.setSpellActive(spell.id, false);
+      }
     }
     const spell = this.spellManager.spells.get(sectionId);
     if (spell) this.spellManager.setSpellActive(spell.id, true);
@@ -220,6 +255,9 @@ export class UIController {
     }
     if (this.currentSection !== 'polyhedra') {
       params.set('section', this.currentSection);
+    }
+    if (this.spellManager.spells.get('dual-morph')?.wanted) {
+      params.set('dual', '1');
     }
     window.history.replaceState(null, '', `#${params.toString()}`);
   }
@@ -242,9 +280,12 @@ export class UIController {
       this.engine.setUnfold(unfold);
     }
 
-    // 'spells' is the legacy parameter from the tabbed layout: open the first listed spell as its section
-    const legacySpell = (params.get('spells') || '').split(',')[0];
-    this.setSection(params.get('section') || legacySpell || 'polyhedra');
+    // Older links: 'spells=dual-morph' or 'section=dual-morph' now mean "Polyhedra with the Dual Twin on"
+    const legacy = (params.get('spells') || '').split(',')[0];
+    const requested = params.get('section') || legacy || 'polyhedra';
+    const dual = this.spellManager.spells.get('dual-morph');
+    if (dual && (params.get('dual') === '1' || requested === 'dual-morph')) dual.wanted = true;
+    this.setSection(requested);
   }
 
   showToast(message) {

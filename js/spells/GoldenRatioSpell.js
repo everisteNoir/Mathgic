@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PHI } from '../solids/PlatonicMath.js?v=5';
+import { PHI } from '../solids/PlatonicMath.js?v=7';
 
 const GOLDEN_ANGLE = 137.50776405; // degrees = 360° / φ²
 const TILT = -0.55; // flat patterns lean toward the camera so they stay readable while the stage spins
@@ -16,7 +16,6 @@ const FLAT_LAYERS = ['spiral', 'phyllotaxis', 'pentagram', 'cut'];
  */
 export const GoldenRatioSpell = {
   id: 'golden-ratio',
-  icon: '📐',
   name: 'The Golden Ratio (φ = 1.618)',
   isolateStage: true,
   hasLiveReadout: true,

@@ -1,10 +1,42 @@
 import * as THREE from 'three';
-import { PLATONIC_DATA, getSolidGeometryData } from './PlatonicMath.js?v=5';
+import { PLATONIC_DATA, getSolidGeometryData } from './PlatonicMath.js?v=7';
 import {
   createSheerFaceMaterial,
   createGlowingEdgeMaterial,
   createInnerFlameMaterial
-} from '../shaders/ElementShaders.js?v=5';
+} from '../shaders/ElementShaders.js?v=7';
+
+/** Flat glowing rings lying on the ground plane (used for ripples and gust waves). */
+function makeFlatRings(parent, disposables, count, color, y) {
+  const geo = new THREE.RingGeometry(0.97, 1.0, 72);
+  disposables.push(geo);
+  return Array.from({ length: count }, () => {
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = y;
+    parent.add(mesh);
+    disposables.push(mat);
+    return mesh;
+  });
+}
+
+/** Expanding ring waves: ring i starts at k = start + i*gap and has spread across the net by k = 0.98. */
+function driveRings(rings, k, start, gap, maxR, peak) {
+  rings.forEach((ring, i) => {
+    const t0 = start + i * gap;
+    const p = THREE.MathUtils.clamp((k - t0) / (0.98 - t0), 0, 1);
+    ring.scale.setScalar(0.12 + p * maxR);
+    ring.material.opacity = k > t0 ? Math.sin(p * Math.PI) * peak : 0;
+  });
+}
 
 /**
  * SolidMeshBuilder.js — Builds 3D Platonic Solids with:
@@ -20,7 +52,7 @@ export class SolidMeshBuilder {
   build(solidId) {
     const meta = PLATONIC_DATA[solidId];
     const geoData = getSolidGeometryData(solidId);
-    const { vertices, faces, faceNormals, hingeTree } = geoData;
+    const { vertices, faces, faceNormals, hingeTree, baseY } = geoData;
 
     const rootGroup = new THREE.Group();
     rootGroup.name = `Platonic_${solidId}`;
@@ -138,13 +170,16 @@ export class SolidMeshBuilder {
     const innerGroup = new THREE.Group();
     innerGroup.name = 'ElementalCore';
 
-    // The Fire tetrahedron's flame and embers live in an "upright" group that is counter-rotated every frame,
-    // so they always point up in world space no matter how the solid is rotated.
-    let uprightGroup = null;
-    if (solidId === 'tetrahedron') {
-      uprightGroup = new THREE.Group();
-      uprightGroup.name = 'UprightFire';
-      rootGroup.add(uprightGroup);
+    // An "upright" group is counter-rotated every frame so everything inside keeps a fixed world orientation
+    // however the solid is turned. It holds the ambient particles of every solid, plus the cores (flame, vortex,
+    // water orb) and the vanishing effects that must fall / rise along true world directions.
+    const uprightGroup = new THREE.Group();
+    uprightGroup.name = 'Upright';
+    rootGroup.add(uprightGroup);
+    const fxGroup = new THREE.Group(); // effects played while the net opens; hidden when folded
+    fxGroup.visible = false;
+    uprightGroup.add(fxGroup);
+    if (solidId === 'tetrahedron' || solidId === 'octahedron' || solidId === 'icosahedron') {
       uprightGroup.add(innerGroup);
     } else {
       rootGroup.add(innerGroup);
@@ -305,16 +340,115 @@ export class SolidMeshBuilder {
         disposables.push(tubeGeo, tubeMat);
       }
 
+      // Gust FX: the vortex unwinds into streamlines that fan out across the flat net, with swirling dust and wind rings
+      const NET = 2.4;
+      const W = 22;
+      const S = 28;
+      const linePos = new Float32Array(W * S * 6);
+      const lineCol = new Float32Array(W * S * 6);
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+      lineGeo.setAttribute('color', new THREE.BufferAttribute(lineCol, 3));
+      const lineMat = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const windLines = new THREE.LineSegments(lineGeo, lineMat);
+      windLines.frustumCulled = false;
+      fxGroup.add(windLines);
+      const streaks = Array.from({ length: W }, (_, j) => ({
+        off: (j / W) * Math.PI * 2,
+        spin: 0.8 + Math.random() * 0.8
+      }));
+
+      const DUST = 90;
+      const dustPos = new Float32Array(DUST * 3);
+      const dustCol = new Float32Array(DUST * 3);
+      const dustGeo = new THREE.BufferGeometry();
+      dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+      dustGeo.setAttribute('color', new THREE.BufferAttribute(dustCol, 3));
+      const dustMat = new THREE.PointsMaterial({
+        size: 0.045,
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const dust = new THREE.Points(dustGeo, dustMat);
+      dust.frustumCulled = false;
+      fxGroup.add(dust);
+      const dustSeeds = Array.from({ length: DUST }, () => ({
+        a: Math.random() * Math.PI * 2,
+        r: 0.3 + Math.random() * 0.7,
+        sp: 1.2 + Math.random() * 2.2,
+        h: Math.random()
+      }));
+      const windRings = makeFlatRings(fxGroup, disposables, 2, '#e0f2fe', baseY + 0.01);
+      disposables.push(lineGeo, lineMat, dustGeo, dustMat);
+
       coreAnimator = (elapsed, energy) => {
         const k = dissolve();
-        // Gust: the vortex spins up, spreads wide, flattens and thins out into the air
+        // The vortex spins up and lifts while its ribbons fade into the streamlines
         innerGroup.rotation.y = elapsed * (2.2 + energy * 4.0 + k * 9.0);
-        innerGroup.scale.set(1 + k * 2.4, Math.max(0.001, 1 - k * 0.65), 1 + k * 2.4);
-        const fade = 1 - sstep(k, 0.3, 1.0);
+        innerGroup.scale.set(1 + k * 1.2, Math.max(0.001, 1 - k * 0.5), 1 + k * 1.2);
+        const ribbonFade = 1 - sstep(k, 0.15, 0.6);
         ribbons.forEach((rb, idx) => {
           rb.scale.setScalar(1 + Math.sin(elapsed * 3.0 + idx) * 0.08);
-          rb.material.opacity = 0.8 * fade;
+          rb.material.opacity = 0.8 * ribbonFade;
         });
+
+        const head = sstep(k, 0.1, 0.7); // how far each streamline has been drawn
+        const e = sstep(k, 0.2, 0.85); // helix → flat spiral on the net
+        const out = 1 - sstep(k, 0.85, 1.0);
+        windLines.visible = head > 0.001;
+        dust.visible = k > 0.2;
+        if (windLines.visible) {
+          for (let j = 0; j < W; j++) {
+            const st = streaks[j];
+            let px = 0;
+            let py = 0;
+            let pz = 0;
+            for (let i = 0; i <= S; i++) {
+              const u = i / S;
+              const s2 = u * head;
+              const ha = s2 * Math.PI * 4 + st.off + elapsed * 2.2;
+              const hr = Math.sin(s2 * Math.PI) * 0.36;
+              const pa = st.off + s2 * 5.0 * (1 - 0.7 * e) + elapsed * 0.5 * st.spin * e;
+              const pr = 0.12 + NET * Math.pow(s2, 0.9);
+              const x = THREE.MathUtils.lerp(Math.cos(ha) * hr, Math.cos(pa) * pr, e);
+              const y = THREE.MathUtils.lerp((s2 - 0.5) * 0.95, baseY + 0.02 + 0.05 * Math.sin(s2 * 12 + elapsed * 3 + st.off), e);
+              const z = THREE.MathUtils.lerp(Math.sin(ha) * hr, Math.sin(pa) * pr, e);
+              if (i > 0) {
+                const o = (j * S + (i - 1)) * 6;
+                linePos[o] = px; linePos[o + 1] = py; linePos[o + 2] = pz;
+                linePos[o + 3] = x; linePos[o + 4] = y; linePos[o + 5] = z;
+                const f = Math.pow(u, 1.6) * out;
+                lineCol[o] = 0.55 * f; lineCol[o + 1] = 0.85 * f; lineCol[o + 2] = f;
+                lineCol[o + 3] = 0.55 * f; lineCol[o + 4] = 0.85 * f; lineCol[o + 5] = f;
+              }
+              px = x; py = y; pz = z;
+            }
+          }
+          lineGeo.attributes.position.needsUpdate = true;
+          lineGeo.attributes.color.needsUpdate = true;
+        }
+        if (dust.visible) {
+          const vis = sstep(k, 0.2, 0.4) * out;
+          for (let i = 0; i < DUST; i++) {
+            const d = dustSeeds[i];
+            const ang = d.a + elapsed * d.sp * (0.4 + e);
+            const r = (0.15 + e * NET) * d.r;
+            dustPos[i * 3] = Math.cos(ang) * r;
+            dustPos[i * 3 + 1] = baseY + 0.03 + 0.18 * d.h * (0.5 + 0.5 * Math.sin(elapsed * 2 + d.a));
+            dustPos[i * 3 + 2] = Math.sin(ang) * r;
+            dustCol[i * 3] = 0.8 * vis; dustCol[i * 3 + 1] = 0.95 * vis; dustCol[i * 3 + 2] = vis;
+          }
+          dustGeo.attributes.position.needsUpdate = true;
+          dustGeo.attributes.color.needsUpdate = true;
+        }
+        driveRings(windRings, k, 0.35, 0.18, NET + 0.4, 0.6);
       };
     } else if (solidId === 'icosahedron') {
       // WATER CORE: Undulating liquid sphere with caustic wireframe ripples
@@ -342,16 +476,88 @@ export class SolidMeshBuilder {
       innerGroup.add(waterMesh, dropMesh);
       disposables.push(waterGeo, waterMat, dropGeo, dropMat);
 
+      // Splash FX: the orb falls onto the base, bursts into a crown of droplets that rain down, ripples spread across the net
+      const DROPS = 150;
+      const GRAV = 5;
+      const T = 2.2; // seconds of droplet flight per unit of unfold
+      const drops = Array.from({ length: DROPS }, () => {
+        const a = Math.random() * Math.PI * 2;
+        const vh = 0.3 + Math.random() * 0.9;
+        const vy = 1.0 + Math.random() * 1.4;
+        const y0 = baseY + 0.1 + Math.random() * 0.12;
+        const a0 = Math.random() * Math.PI * 2;
+        const r0 = Math.random() * 0.25;
+        return {
+          x0: Math.cos(a0) * r0,
+          y0,
+          z0: Math.sin(a0) * r0,
+          vx: Math.cos(a) * vh,
+          vz: Math.sin(a) * vh,
+          vy,
+          tl: 0.3 + Math.random() * 0.22,
+          tLand: (vy + Math.sqrt(vy * vy + 2 * GRAV * (y0 - baseY))) / GRAV,
+          shade: 0.6 + Math.random() * 0.4
+        };
+      });
+      const dropPos = new Float32Array(DROPS * 3);
+      const dropCol = new Float32Array(DROPS * 3);
+      const dropsGeo = new THREE.BufferGeometry();
+      dropsGeo.setAttribute('position', new THREE.BufferAttribute(dropPos, 3));
+      dropsGeo.setAttribute('color', new THREE.BufferAttribute(dropCol, 3));
+      const dropsMat = new THREE.PointsMaterial({
+        size: 0.055,
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const droplets = new THREE.Points(dropsGeo, dropsMat);
+      droplets.frustumCulled = false;
+      fxGroup.add(droplets);
+      const ripples = makeFlatRings(fxGroup, disposables, 4, '#7dd3fc', baseY + 0.01);
+      disposables.push(dropsGeo, dropsMat);
+
       coreAnimator = (elapsed, energy) => {
         const k = dissolve();
-        // Splash: the orb sinks into a shallow pool that spreads out, rippling harder, then evaporates
-        innerGroup.scale.set(1 + k * 1.8, Math.max(0.02, 1 - k * 0.97), 1 + k * 1.8);
-        const fade = 1 - sstep(k, 0.55, 1.0);
+        // The orb sinks onto the base, squashes flat on impact, then is gone as the crown erupts
+        const sink = sstep(k, 0.05, 0.35);
+        const squash = 1 - sstep(k, 0.25, 0.4) * 0.85;
+        innerGroup.position.y = sink * (baseY + 0.3);
+        innerGroup.scale.set(1 + (1 - squash) * 0.9, Math.max(0.001, squash), 1 + (1 - squash) * 0.9);
+        const fade = 1 - sstep(k, 0.3, 0.45);
         waterMat.opacity = 0.45 * fade;
         dropMat.opacity = 0.42 * fade;
+
+        // Droplets follow exact ballistic arcs, so scrubbing the slider in either direction replays the splash
+        for (let i = 0; i < DROPS; i++) {
+          const d = drops[i];
+          let x = d.x0;
+          let y = d.y0;
+          let z = d.z0;
+          let a = 0;
+          if (k > d.tl) {
+            const tau = (k - d.tl) * T;
+            const t = Math.min(tau, d.tLand);
+            x = d.x0 + d.vx * t;
+            z = d.z0 + d.vz * t;
+            y = d.y0 + d.vy * t - 0.5 * GRAV * t * t;
+            a = 1 - sstep(tau - d.tLand, 0, 0.35); // mist away after landing
+          }
+          a *= 1 - sstep(k, 0.93, 1.0);
+          dropPos[i * 3] = x;
+          dropPos[i * 3 + 1] = y;
+          dropPos[i * 3 + 2] = z;
+          dropCol[i * 3] = 0.45 * a * d.shade;
+          dropCol[i * 3 + 1] = 0.85 * a * d.shade;
+          dropCol[i * 3 + 2] = a * d.shade;
+        }
+        dropsGeo.attributes.position.needsUpdate = true;
+        dropsGeo.attributes.color.needsUpdate = true;
+        driveRings(ripples, k, 0.42, 0.1, 2.6, 0.7);
+
         if (k > 0.999) return;
         const pos = waterGeo.attributes.position;
-        const amp = 0.035 + energy * 0.04 + k * 0.09;
+        const amp = 0.035 + energy * 0.04 + k * 0.06;
         for (let i = 0; i < pos.count; i++) {
           const bx = basePos[i * 3];
           const by = basePos[i * 3 + 1];
@@ -440,7 +646,7 @@ export class SolidMeshBuilder {
       depthWrite: false
     });
     const particles = new THREE.Points(pGeo, pMat);
-    (uprightGroup || rootGroup).add(particles);
+    uprightGroup.add(particles);
 
     // Update 2D net unfolding angle; the core dissolves via its own coreAnimator (see dissolve())
     const setUnfold = (unfoldFactor) => {
@@ -451,11 +657,11 @@ export class SolidMeshBuilder {
       });
       unfold = unfoldFactor;
       innerGroup.visible = unfoldFactor < 0.995;
+      fxGroup.visible = unfoldFactor > 0.005;
     };
 
     const _uprightQuat = new THREE.Quaternion();
     const updateUpright = () => {
-      if (!uprightGroup) return;
       rootGroup.getWorldQuaternion(_uprightQuat);
       uprightGroup.quaternion.copy(_uprightQuat).invert();
     };
@@ -472,6 +678,8 @@ export class SolidMeshBuilder {
       particles,
       particleSeeds: pSeeds,
       innerGroup,
+      fxGroup,
+      getDissolve: dissolve,
       coreAnimator,
       setUnfold,
       updateUpright,

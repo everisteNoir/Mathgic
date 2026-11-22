@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { createGlobalUniforms } from './Uniforms.js?v=5';
-import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js?v=5';
+import { createGlobalUniforms } from './Uniforms.js?v=7';
+import { HoldFX } from './HoldFX.js?v=7';
+import { fxState } from './FXState.js?v=7';
+import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js?v=7';
 
 const WORLD_X = new THREE.Vector3(1, 0, 0);
 const WORLD_Y = new THREE.Vector3(0, 1, 0);
@@ -29,6 +31,9 @@ export class Engine {
     this.manualSolidVisible = true;
     this.stageSolidVisible = true; // set by the active section: false in sections that must not show any polyhedron
     this.portalAutoHideCount = 0;
+    this.solidPresence = 1; // 0..1: the solid materializes / dissolves smoothly when sections change
+    this._simple = false; // true while the core uses the plain shrink (FX off)
+    this._viewK = 0;
 
     // Inertial world-space angular velocity: x = yaw (World Y), y = pitch (World X)
     this.isDragging = false;
@@ -41,6 +46,7 @@ export class Engine {
     this.cameraDistance = 3.6;
     this.targetCameraDistance = 3.6;
 
+    this._levelQuat = new THREE.Quaternion();
     this._qYaw = new THREE.Quaternion();
     this._qPitch = new THREE.Quaternion();
 
@@ -50,6 +56,7 @@ export class Engine {
     this._initScene();
     this._initEnvironment();
     this._initPostProcessing();
+    this.holdFX = new HoldFX(this.scene, this.camera);
     this._initEvents();
   }
 
@@ -99,10 +106,6 @@ export class Engine {
     });
     this.starField = new THREE.Points(starGeo, starMat);
     this.scene.add(this.starField);
-
-    this.gridHelper = new THREE.PolarGridHelper(4.5, 16, 8, 64, '#1e293b', '#0f172a');
-    this.gridHelper.position.y = -1.65;
-    this.scene.add(this.gridHelper);
   }
 
   _initPostProcessing() {
@@ -159,11 +162,6 @@ export class Engine {
 
   _syncSolidVisibility() {
     const vis = this.isSolidEffectivelyVisible();
-    if (this.activeSolid) {
-      this.activeSolid.rootGroup.visible = vis;
-    }
-    const id = this.activeSolid?.solidId;
-    this.gridHelper.visible = vis && (id === 'cube' || id === 'dodecahedron');
     this.eventBus.emit('SOLID_VISIBILITY_CHANGED', {
       visible: vis,
       autoHidden: this.portalAutoHideCount > 0
@@ -185,11 +183,13 @@ export class Engine {
     this.uniforms.uColorTertiary.value.set(built.meta.tertiaryColor);
     this.uniforms.uEnergy.value = 0;
     built.setUnfold(this.uniforms.uUnfold.value);
+    this.holdFX.setElement(built.meta, solidId);
+    // A newly chosen solid materializes from nothing
+    this.solidPresence = 0;
+    built.rootGroup.scale.setScalar(0.001);
 
-    // Tetrahedron default pose: base face down, apex up
-    if (solidId === 'tetrahedron') {
-      this.targetCameraQuat = new THREE.Quaternion();
-    }
+    // Default pose: every solid rests on its base face (reset any pitch/roll, keep it level)
+    this.targetCameraQuat = new THREE.Quaternion();
 
     this._syncSolidVisibility();
 
@@ -217,6 +217,14 @@ export class Engine {
       solidId: this.activeSolid?.solidId,
       point
     });
+  }
+
+  /** Releasing a fully charged hold: burst VFX + face pulse. */
+  releaseCharge(charge) {
+    if (!this.activeSolid || !this.activeSolid.rootGroup.visible) return;
+    if (fxState.enabled) this.holdFX.burst(charge);
+    this.triggerPulse(new THREE.Vector3(0, 0, 0));
+    this.eventBus.emit('CHARGE_RELEASE', { energy: charge, solidId: this.activeSolid.solidId });
   }
 
   _initEvents() {
@@ -261,7 +269,10 @@ export class Engine {
     };
 
     const onUp = () => {
-      if (this.isDragging && this.dragDistance < 6) {
+      const charge = this.uniforms.uEnergy.value;
+      if (this.isHolding && this.dragDistance < 10 && charge > 0.5) {
+        this.releaseCharge(charge);
+      } else if (this.isDragging && this.dragDistance < 6) {
         this._performRaycastClick();
       }
       this.isDragging = false;
@@ -416,26 +427,46 @@ export class Engine {
           }
         }
 
-        this.activeSolid.rootGroup.position.y = Math.sin(elapsed * meta.floatSpeed) * meta.floatAmp;
-        this.activeSolid.updateUpright();
-
-        if (this.activeSolid.solidId === 'octahedron' && this.pointerNDC.x <= 1) {
-          this.activeSolid.rootGroup.rotation.z = THREE.MathUtils.lerp(
-            this.activeSolid.rootGroup.rotation.z,
-            -this.pointerNDC.x * 0.25,
-            0.05
-          );
-        } else {
-          this.activeSolid.rootGroup.rotation.z = THREE.MathUtils.lerp(
-            this.activeSolid.rootGroup.rotation.z,
-            0,
-            0.08
-          );
+        // While the net opens, the solid levels itself onto its base (keeps yaw, removes pitch/roll)
+        // and stops bobbing, so the base stays perfectly still on the ground.
+        const unfoldNow = this.uniforms.uUnfold.value;
+        if (unfoldNow > 0.01 && !this.isDragging && !this.targetCameraQuat) {
+          const q = this.worldPivot.quaternion;
+          this._levelQuat.set(0, q.y, 0, q.w).normalize();
+          this.worldPivot.quaternion.slerp(this._levelQuat, 0.04 + 0.1 * unfoldNow);
         }
+        this.activeSolid.rootGroup.position.y =
+          Math.sin(elapsed * meta.floatSpeed) * meta.floatAmp * (1 - unfoldNow);
+
+        // Smooth materialize / dissolve when the solid is shown or hidden (instant in static mode)
+        const presenceTarget = this.isSolidEffectivelyVisible() ? 1 : 0;
+        const rich = fxState.enabled;
+        this.solidPresence = rich
+          ? this.solidPresence + (presenceTarget - this.solidPresence) * Math.min(1, delta * 7)
+          : presenceTarget;
+        if (Math.abs(this.solidPresence - presenceTarget) < 0.004) this.solidPresence = presenceTarget;
+        const pres = this.solidPresence;
+        this.activeSolid.rootGroup.visible = pres > 0.01;
+        this.activeSolid.rootGroup.scale.setScalar(Math.max(0.001, 1 - Math.pow(1 - pres, 3)));
+        this.activeSolid.updateUpright();
+        this.activeSolid.fxGroup.visible = rich && unfoldNow > 0.005;
+        this.activeSolid.particles.visible = rich;
 
         // Animate interior elemental core
         if (this.activeSolid.coreAnimator) {
+          const inner = this.activeSolid.innerGroup;
+          if (rich && this._simple) {
+            inner.scale.setScalar(1);
+            inner.position.set(0, 0, 0);
+            this._simple = false;
+          }
           this.activeSolid.coreAnimator(elapsed, this.uniforms.uEnergy.value);
+          if (!rich) {
+            // Static mode: the core simply shrinks away as the net opens
+            this._simple = true;
+            inner.position.set(0, 0, 0);
+            inner.scale.setScalar(Math.max(0.001, 1 - this.activeSolid.getDissolve()));
+          }
         }
 
         // Ambient particle dynamics
@@ -444,7 +475,7 @@ export class Engine {
         const unfoldK = this.uniforms.uUnfold.value;
         const speedBoost = 1 + this.uniforms.uEnergy.value * 4.0 + unfoldK * 5.0;
         const emberTop = 0.95 + unfoldK * 1.6; // embers of the Fire core rise higher as the net opens
-        for (let i = 0; i < seeds.length; i++) {
+        for (let i = 0; rich && i < seeds.length; i++) {
           if (this.activeSolid.solidId === 'tetrahedron') {
             posAttr.array[i * 3 + 1] += delta * 0.55 * speedBoost;
             if (posAttr.array[i * 3 + 1] > emberTop) posAttr.array[i * 3 + 1] = -0.3;
@@ -459,8 +490,30 @@ export class Engine {
         posAttr.needsUpdate = true;
       }
 
+      // Hold VFX (world-fixed) + glow boost + camera shake
+      const energyNow = this.uniforms.uEnergy.value;
+      const richFx = fxState.enabled;
+      if (richFx) {
+        this.holdFX.update(delta, energyNow, this.activeSolid, elapsed);
+      } else {
+        this.holdFX.group.visible = false;
+      }
+      this.bloomPass.strength = richFx ? 0.85 + energyNow * 0.45 + this.holdFX.flash * 1.1 : 0.85;
+      const shake = richFx ? this.holdFX.shakeAmount(energyNow) : 0;
+
+      // Camera rises to look down on the net as it opens
+      const unfoldTarget = this.isSolidEffectivelyVisible()
+        ? THREE.MathUtils.smoothstep(this.uniforms.uUnfold.value, 0.05, 1.0)
+        : 0;
+      this._viewK += (unfoldTarget - this._viewK) * Math.min(1, delta * 4);
+      const unfoldView = this._viewK;
       this.cameraDistance = THREE.MathUtils.lerp(this.cameraDistance, this.targetCameraDistance, 0.1);
-      this.camera.position.z = this.cameraDistance;
+      this.camera.position.set(
+        (Math.random() - 0.5) * shake,
+        THREE.MathUtils.lerp(0.25, 2.3, unfoldView) + (Math.random() - 0.5) * shake,
+        this.cameraDistance
+      );
+      this.camera.lookAt(0, 0, 0);
 
       this.starField.rotation.y = elapsed * 0.015;
 

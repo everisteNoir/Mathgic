@@ -12,8 +12,16 @@ export class SpellManager {
 
     this.eventBus.on('TICK', ({ elapsed, delta }) => {
       for (const spell of this.spells.values()) {
-        if (spell.active && typeof spell.onUpdate === 'function') {
+        if ((spell.active || spell.leaving) && typeof spell.onUpdate === 'function') {
           spell.onUpdate(elapsed, delta);
+        }
+        // A spell with an outro stays alive until its exit animation finishes, then it is really removed
+        if (spell.leaving) {
+          spell._leaveT += delta;
+          if (spell._leaveT >= spell.outroDuration) {
+            spell.leaving = false;
+            spell.onDeactivate?.(this.engine, this.eventBus);
+          }
         }
       }
     });
@@ -29,6 +37,8 @@ export class SpellManager {
 
   register(spell) {
     spell.active = false;
+    spell.leaving = false;
+    spell.wanted = false; // for userToggle spells: the user's own on/off choice
     spell.params = {};
     if (Array.isArray(spell.controls)) {
       spell.controls.forEach((c) => {
@@ -40,9 +50,34 @@ export class SpellManager {
     this._renderSpellCard(spell);
   }
 
-  setSpellActive(spellId, isActive) {
+  setSpellActive(spellId, isActive, { instant = false } = {}) {
     const spell = this.spells.get(spellId);
-    if (!spell || spell.active === isActive) return;
+    if (!spell) return;
+
+    // Skip a running exit animation when asked to remove right now
+    if (!isActive && instant && spell.leaving) {
+      spell.leaving = false;
+      spell.onDeactivate?.(this.engine, this.eventBus);
+      return;
+    }
+    if (spell.active === isActive) return;
+
+    // Spells with an exit animation: turn off now, but really remove only after the outro has played
+    if (!isActive && spell.outroDuration && !instant) {
+      spell.active = false;
+      spell.leaving = true;
+      spell._leaveT = 0;
+      this._paintCard(spell, false);
+      spell.onOutro?.(this.engine, this.eventBus);
+      this.eventBus.emit('SPELL_TOGGLED', { spellId, active: false });
+      return;
+    }
+
+    // Re-summoned while still leaving: finish the old instance first
+    if (isActive && spell.leaving) {
+      spell.leaving = false;
+      spell.onDeactivate?.(this.engine, this.eventBus);
+    }
 
     // If activating a hyper-spatial portal (e.g., 4D Tesseract or Non-Euclidean Space),
     // automatically deactivate other portals and isolate the stage so nothing collides
@@ -58,10 +93,7 @@ export class SpellManager {
     }
 
     spell.active = isActive;
-    const card = this.containerEl.querySelector(`[data-spell-id="${spellId}"]`);
-    if (card) {
-      card.classList.toggle('active', isActive);
-    }
+    this._paintCard(spell, isActive);
 
     if (isActive) {
       spell.onActivate?.(this.engine, this.eventBus);
@@ -70,6 +102,17 @@ export class SpellManager {
     }
 
     this.eventBus.emit('SPELL_TOGGLED', { spellId, active: isActive });
+  }
+
+  _paintCard(spell, isActive) {
+    const card = this.containerEl.querySelector(`[data-spell-id="${spell.id}"]`);
+    if (!card) return;
+    card.classList.toggle('active', isActive);
+    const btn = card.querySelector('.summon-btn');
+    if (btn) {
+      btn.textContent = isActive ? 'Dismiss Twin' : 'Summon Twin';
+      btn.classList.toggle('active', isActive);
+    }
   }
 
   getActiveSpellIds() {
@@ -84,18 +127,27 @@ export class SpellManager {
     card.dataset.spellId = spell.id;
 
     const tagLabel = spell.isolateStage ? 'HYPER-SPATIAL PORTAL' : 'INSCRIBED GEOMETRY';
+    const summon = spell.userToggle
+      ? '<button type="button" class="summon-btn">Summon Twin</button>'
+      : '';
     const tagClass = spell.isolateStage ? 'spell-tag portal' : 'spell-tag';
 
     card.innerHTML = `
       <div class="spell-card-header">
         <div>
-          <div class="spell-title">${spell.icon || '✦'} ${spell.name}</div>
+          <div class="spell-title">${spell.name}</div>
           <span class="${tagClass}">${tagLabel}</span>
           <div class="spell-desc">${spell.description}</div>
         </div>
       </div>
+      ${summon}
       <div class="spell-controls"></div>
     `;
+
+    card.querySelector('.summon-btn')?.addEventListener('click', () => {
+      spell.wanted = !spell.wanted;
+      this.setSpellActive(spell.id, spell.wanted);
+    });
 
     const controlsWrap = card.querySelector('.spell-controls');
     const rows = [];

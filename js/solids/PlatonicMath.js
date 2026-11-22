@@ -250,6 +250,15 @@ export function getSolidGeometryData(id) {
     }
   }
 
+  // Resting pose: octahedron, icosahedron and dodecahedron are turned so face 0 lies flat on the ground
+  // (the tetrahedron and cube already rest on a base face), so every solid has a clear base to unfold from.
+  if (id === 'octahedron' || id === 'icosahedron' || id === 'dodecahedron') {
+    const c = new THREE.Vector3();
+    faces[0].forEach((i) => c.add(rawVertices[i]));
+    const toDown = new THREE.Quaternion().setFromUnitVectors(c.normalize(), new THREE.Vector3(0, -1, 0));
+    rawVertices.forEach((v) => v.applyQuaternion(toDown));
+  }
+
   // Ensure outward-facing vertex winding for every face
   faces = faces.map((face) => {
     const pts = face.map((i) => rawVertices[i]);
@@ -296,13 +305,12 @@ export function getSolidGeometryData(id) {
   });
 
   // Build BFS Spanning Hinge Tree for exact 2D net unfolding.
-  // The tetrahedron's net unfolds from its downward-facing base so it flattens onto the ground plane.
+  // The net always unfolds from the downward-facing base, which stays still while the other faces flatten onto the ground.
   let rootFace = 0;
-  if (id === 'tetrahedron') {
-    faceNormals.forEach((n, i) => {
-      if (n.y < faceNormals[rootFace].y) rootFace = i;
-    });
-  }
+  faceNormals.forEach((n, i) => {
+    if (n.y < faceNormals[rootFace].y) rootFace = i;
+  });
+  const baseY = Math.min(...rawVertices.map((v) => v.y));
   const visited = new Set([rootFace]);
   const queue = [rootFace];
   const hingeTree = Array.from({ length: faces.length }, (_, i) => ({
@@ -353,6 +361,8 @@ export function getSolidGeometryData(id) {
     faces,
     faceNormals,
     faceCenters,
-    hingeTree
+    hingeTree,
+    rootFace,
+    baseY
   };
 }
