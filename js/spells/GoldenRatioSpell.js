@@ -1,10 +1,13 @@
 import * as THREE from 'three';
-import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
+import { fxState } from '../core/FXState.js?v=23';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=26';
 import { PHI } from '../solids/PlatonicMath.js?v=23';
 
 const GOLDEN_ANGLE = 137.50776405; // degrees = 360° / φ²
 const TILT = -0.55; // flat patterns lean toward the camera so they stay readable while the stage spins
 const FLAT_LAYERS = ['spiral', 'phyllotaxis', 'pentagram', 'cut'];
+const shouldAnimateIntro = () =>
+  fxState.enabled && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * GoldenRatioSpell.js — Mathgic 2: The Golden Ratio (φ = 1.6180339...)
@@ -22,7 +25,7 @@ export const GoldenRatioSpell = {
   hasLiveReadout: true,
   initialReadout: String.raw`\(\varphi=1.6180339887\) • Long side ÷ short side = \(\varphi\) • Three rectangles meet at right angles`,
   description:
-    'Explore where φ appears: orthogonal Golden Rectangles, the Fibonacci spiral, sunflower seed spirals, nested pentagrams and the golden cut.',
+    String.raw`Explore where \(\varphi\) appears: orthogonal Golden Rectangles, the Fibonacci spiral, sunflower seed spirals, nested pentagrams and the golden cut.`,
   controls: [
     {
       id: 'mode',
@@ -30,11 +33,11 @@ export const GoldenRatioSpell = {
       label: 'Pattern',
       default: 'rectangles',
       options: [
-        { value: 'rectangles', label: 'Rectangles', legend: 'Three golden rectangles, each with sides in the ratio φ : 1, meet at right angles. Spin them like a gyroscope.' },
-        { value: 'spiral', label: 'Spiral', legend: 'Squares with Fibonacci sides tile a rectangle, and a quarter circle in each draws the golden spiral. Neighbouring Fibonacci numbers close in on φ.' },
-        { value: 'phyllotaxis', label: 'Seeds', legend: 'A sunflower plants each seed one golden angle (about 137.5°) after the last. Move the angle and the even packing breaks into radial arms.' },
-        { value: 'pentagram', label: 'Pentagram', legend: 'In a pentagram every diagonal is φ times a side, and each nested pentagram is 1/φ² the size of the one around it.' },
-        { value: 'cut', label: 'Golden Cut', legend: 'Cut a segment so that whole : long equals long : short. Only one cut works, and the ratio is φ.' }
+        { value: 'rectangles', label: 'Rectangles', legend: String.raw`Three golden rectangles, each with sides in the ratio \(\varphi:1\), meet at right angles. Spin them like a gyroscope.` },
+        { value: 'spiral', label: 'Spiral', legend: String.raw`Squares with Fibonacci sides tile a rectangle, and a quarter circle in each draws the golden spiral. Neighbouring Fibonacci numbers close in on \(\varphi\).` },
+        { value: 'phyllotaxis', label: 'Seeds', legend: String.raw`A sunflower plants each seed one golden angle (about \(137.5^\circ\)) after the last. Move the angle and the even packing breaks into radial arms.` },
+        { value: 'pentagram', label: 'Pentagram', legend: String.raw`In a pentagram every diagonal is \(\varphi\) times a side, and each nested pentagram is \(1/\varphi^2\) the size of the one around it.` },
+        { value: 'cut', label: 'Golden Cut', legend: String.raw`Cut a segment so that \(\text{whole}:\text{long}=\text{long}:\text{short}\). Only one cut works, and the ratio is \(\varphi\).` }
       ]
     },
     // --- Rectangles ---
@@ -42,14 +45,14 @@ export const GoldenRatioSpell = {
       id: 'scale',
       label: 'Golden field scale',
       min: 0.45, max: 1.35, step: 0.02, default: 0.96,
-      format: (v) => `${v.toFixed(2)} φ`,
+      format: (v) => String.raw`\(${v.toFixed(2)}\,\varphi\)`,
       showWhen: (p) => p.mode === 'rectangles'
     },
     {
       id: 'spin',
       label: 'Gyroscope spin',
       min: 0, max: 2, step: 0.05, default: 0,
-      format: (v) => (v === 0 ? 'Still' : `${v.toFixed(2)} rad/s`),
+      format: (v) => (v === 0 ? 'Still' : String.raw`\(${v.toFixed(2)}\,\mathrm{rad/s}\)`),
       showWhen: (p) => p.mode === 'rectangles'
     },
     // --- Spiral ---
@@ -57,7 +60,7 @@ export const GoldenRatioSpell = {
       id: 'squares',
       label: 'Fibonacci squares',
       min: 4, max: 11, step: 1, default: 9,
-      format: (v) => `${v}`,
+      format: (v) => String.raw`\(${v}\)`,
       showWhen: (p) => p.mode === 'spiral'
     },
     {
@@ -72,14 +75,14 @@ export const GoldenRatioSpell = {
       id: 'seeds',
       label: 'Seed count',
       min: 60, max: 800, step: 10, default: 420,
-      format: (v) => `${v}`,
+      format: (v) => String.raw`\(${v}\)`,
       showWhen: (p) => p.mode === 'phyllotaxis'
     },
     {
       id: 'angle',
       label: 'Divergence angle',
       min: 125, max: 150, step: 0.01, default: 137.51,
-      format: (v) => `${v.toFixed(2)}°`,
+      format: (v) => String.raw`\(${v.toFixed(2)}^\circ\)`,
       showWhen: (p) => p.mode === 'phyllotaxis'
     },
     {
@@ -89,10 +92,10 @@ export const GoldenRatioSpell = {
       default: 0,
       options: [
         { value: 0, label: 'Off' },
-        { value: 8, label: '8' },
-        { value: 13, label: '13' },
-        { value: 21, label: '21' },
-        { value: 34, label: '34' }
+        { value: 8, label: String.raw`\(8\)` },
+        { value: 13, label: String.raw`\(13\)` },
+        { value: 21, label: String.raw`\(21\)` },
+        { value: 34, label: String.raw`\(34\)` }
       ],
       showWhen: (p) => p.mode === 'phyllotaxis'
     },
@@ -108,15 +111,15 @@ export const GoldenRatioSpell = {
       id: 'depth',
       label: 'Nested pentagrams',
       min: 1, max: 5, step: 1, default: 3,
-      format: (v) => `${v}`,
+      format: (v) => String.raw`\(${v}\)`,
       showWhen: (p) => p.mode === 'pentagram'
     },
     // --- Golden Cut ---
     {
       id: 'cut',
-      label: 'Division point (long part ÷ whole)',
+      label: String.raw`Division point \(\text{long part}/\text{whole}\)`,
       min: 0.3, max: 0.7, step: 0.002, default: 0.52,
-      format: (v) => `${Math.max(v, 1 - v).toFixed(3)}`,
+      format: (v) => String.raw`\(${Math.max(v, 1 - v).toFixed(3)}\)`,
       showWhen: (p) => p.mode === 'cut'
     }
   ],
@@ -131,6 +134,7 @@ export const GoldenRatioSpell = {
   _spiralReveal: 1,
   _seedReveal: 1,
   _rectangleReveal: 1,
+  _introT: 1,
 
   onActivate(engine) {
     this.engine = engine;
@@ -152,10 +156,13 @@ export const GoldenRatioSpell = {
     this.layers.rectangles.scale.setScalar(this.params.scale ?? 0.96);
     this._currentMode = null;
     this._applyMode(false);
+    this._introT = shouldAnimateIntro() ? 0 : 1;
     if (this.params.mode === 'rectangles') {
-      this._rectangleReveal = 0;
-      this.layers.rectangles.children.forEach((plane) => plane.scale.setScalar(0.001));
+      this._rectangleReveal = this._introT < 1 ? 0 : 1;
+      this.layers.rectangles.children.forEach((plane) => plane.scale.setScalar(this._introT < 1 ? 0.001 : 1));
     }
+    this.group.scale.setScalar(this._introT < 1 ? 0.84 : 1);
+    this.group.rotation.y = this._introT < 1 ? -0.09 : 0;
     this.engine.spellLayer.add(this.group);
   },
 
@@ -199,6 +206,14 @@ export const GoldenRatioSpell = {
     if (!this.layers) return;
     const p = this.params;
     this.layers.phyllotaxis.rotation.z = elapsed * 0.1;
+
+    if (this._introT < 1) {
+      if (!shouldAnimateIntro()) this._introT = 1;
+      else this._introT = Math.min(1, this._introT + delta / 0.9);
+      const eased = this._introT * this._introT * (3 - 2 * this._introT);
+      this.group.scale.setScalar(0.84 + eased * 0.16);
+      this.group.rotation.y = (1 - eased) * -0.09;
+    }
 
     // Each Golden Ratio model materializes in its own visual language. The mode
     // swap is a short staged entrance, not an abrupt visible=true replacement.
@@ -277,6 +292,7 @@ export const GoldenRatioSpell = {
       this.engine.spellLayer.remove(this.group);
       this.group = null;
       this.layers = null;
+      this._introT = 1;
     }
   },
 
@@ -332,10 +348,10 @@ export const GoldenRatioSpell = {
       const n = this._spiralShown || p.squares;
       const f = this._fib(n);
       const ratio = f[n - 1] / f[n - 2];
-      text = String.raw`\(\frac{F(${n})}{F(${n - 1})}=\frac{${f[n - 1]}}{${f[n - 2]}}=${ratio.toFixed(6)}\)` + ' • ' + String.raw`\(\varphi-ratio=${Math.abs(PHI - ratio).toExponential(2)}\)`;
+      text = String.raw`\(\frac{F(${n})}{F(${n - 1})}=\frac{${f[n - 1]}}{${f[n - 2]}}=${ratio.toFixed(6)}\)` + ' • ' + String.raw`\(\varphi-\text{ratio}=${Math.abs(PHI - ratio).toExponential(2)}\)`;
     } else if (mode === 'phyllotaxis') {
       const golden = Math.abs(p.angle - GOLDEN_ANGLE) < 0.03;
-      const arms = p.arms ? ` • ${p.arms} arms visible (Fibonacci)` : '';
+      const arms = p.arms ? String.raw` • \(${p.arms}\) arms visible (Fibonacci)` : '';
       text = golden
         ? String.raw`GOLDEN ANGLE \(${GOLDEN_ANGLE.toFixed(3)}^\circ\) • No seed ever lines up → dense, even packing${arms}`
         : String.raw`\(${p.angle.toFixed(2)}^\circ\) is not golden • Seeds fall into radial arms with gaps${arms}`;
@@ -347,8 +363,8 @@ export const GoldenRatioSpell = {
       const whole = 1 / a;
       const part = a / b;
       text = this._isGoldenCut()
-        ? String.raw`✨ GOLDEN SECTION • \(\frac{whole}{long}=${whole.toFixed(4)}=\frac{long}{short}=${part.toFixed(4)}=\varphi\)`
-        : String.raw`\(\frac{whole}{long}=${whole.toFixed(4)}\) • \(\frac{long}{short}=${part.toFixed(4)}\) • Equal only at \(\varphi\) — try 0.618`;
+        ? String.raw`✨ GOLDEN SECTION • \(\frac{\text{whole}}{\text{long}}=${whole.toFixed(4)}=\frac{\text{long}}{\text{short}}=${part.toFixed(4)}=\varphi\)`
+        : String.raw`\(\frac{\text{whole}}{\text{long}}=${whole.toFixed(4)}\) • \(\frac{\text{long}}{\text{short}}=${part.toFixed(4)}\) • Equal only at \(\varphi\) — try \(0.618\)`;
     }
     this._readoutEl.textContent = text;
     renderMathInElementSafe(this._readoutEl);

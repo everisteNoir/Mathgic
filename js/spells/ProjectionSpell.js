@@ -1,10 +1,13 @@
 import * as THREE from 'three';
-import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
+import { fxState } from '../core/FXState.js?v=23';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=26';
 
 const sstep = THREE.MathUtils.smoothstep;
 const lerp = THREE.MathUtils.lerp;
 const TAU = Math.PI * 2;
 const ADD = THREE.AdditiveBlending;
+const shouldAnimateIntro = () =>
+  fxState.enabled && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 const _col = new THREE.Color();
 const hsl = (h, s, l) => {
@@ -93,7 +96,17 @@ const glowSphere = (color, r) =>
 
 const MULTIPLES = [-1.25, -0.85, -0.45, 0.45, 0.85, 1.25];
 const GOLD = [1.0, 0.8, 0.25];
+const SHADOW_SOURCE = [0.28, 0.68, 0.98];
+const SHADOW_PLANE = [0.18, 0.52, 0.82];
+const SHADOW_RAY = [0.22, 0.35, 0.5];
+const SHADOW_POINT = [0.76, 0.9, 1];
 const view = { vector: 'vector', side: 'side', proj: 'proj' };
+const scale3Into = (color, scale, result) => {
+  result[0] = color[0] * scale;
+  result[1] = color[1] * scale;
+  result[2] = color[2] * scale;
+  return result;
+};
 
 /**
  * ProjectionSpell.js — Dimensional Projection (standalone portal, polyhedra hidden)
@@ -106,7 +119,7 @@ export const ProjectionSpell = {
   name: 'Dimensional Projection',
   isolateStage: true,
   hasLiveReadout: true,
-  initialReadout: String.raw`\(v\sim\lambda v\)  \Rightarrow  \([x:y:z]\) — every multiple of a vector is the same projective point`,
+  initialReadout: String.raw`\(\mathbb{R}^4\to\mathbb{R}^3\to\mathbb{R}^2\to\mathbb{R}\)`,
   description:
     'Follow a space as it casts shadows into fewer dimensions, and watch what happens when every vector is identified with all of its multiples.',
   controls: [
@@ -114,75 +127,81 @@ export const ProjectionSpell = {
       id: 'mode',
       type: 'choice',
       label: 'Lens',
-      default: 'quotient',
+      default: 'shadows',
       options: [
-        { value: 'shadows', label: 'Shadows', legend: 'An n-dimensional cube cast down one dimension at a time: first to 3D, then to a flat shadow, then to a line.' },
-        { value: 'quotient', label: 'Quotient v ~ λv', legend: 'Identify every vector v with all of its multiples λv. What remains is projective space.' },
+        { value: 'shadows', label: 'Shadows', legend: String.raw`An \(n\)-dimensional cube cast down one dimension at a time: first to \(3\mathrm{D}\), then to a flat shadow, then to a line.` },
+        { value: 'quotient', label: String.raw`Quotient \(v\sim\lambda v\)`, legend: String.raw`Identify every vector \(v\) with all of its multiples \(\lambda v\). What remains is projective space.` },
         { value: 'ladder', label: 'Geometry Ladder', legend: 'Euclidean, Affine, Projective: three geometries, each keeping less than the one before.' }
       ]
     },
     // ---------------- Shadows ----------------
-    { id: 'dim', label: 'Dimension of the cube', min: 2, max: 6, step: 1, default: 4, format: (v) => `${v}D`, showWhen: (p) => p.mode === 'shadows' },
+    { id: 'dim', group: 'Source', label: 'Dimension of the cube', min: 2, max: 6, step: 1, default: 4, format: (v) => String.raw`\(${v}\mathrm{D}\)`, showWhen: (p) => p.mode === 'shadows' },
     {
-      id: 'proj', type: 'choice', label: 'Projection', default: 'persp',
+      id: 'proj', group: 'Projection setup', type: 'choice', label: 'Projection', default: 'persp',
       options: [{ value: 'persp', label: 'Perspective' }, { value: 'para', label: 'Parallel' }],
       showWhen: (p) => p.mode === 'shadows'
     },
     {
-      id: 'dist', label: 'Eye distance d', min: 0.9, max: 6, step: 0.01, default: 2.6, format: (v) => v.toFixed(2),
+      id: 'dist', group: 'Projection', label: String.raw`Eye distance \(d\)`, min: 0.9, max: 6, step: 0.01, default: 2.6, format: (v) => String.raw`\(${v.toFixed(2)}\)`,
       showWhen: (p) => p.mode === 'shadows' && p.proj === 'persp'
     },
     {
-      id: 'plane', type: 'choice', label: 'Rotation plane', default: 'auto',
-      options: [{ value: 'auto', label: 'All' }, { value: 'XW', label: 'XW' }, { value: 'YW', label: 'YW' }, { value: 'ZW', label: 'ZW' }],
+      id: 'plane', group: 'Motion & shadow', type: 'choice', label: 'Rotation plane', default: 'auto',
+      options: [{ value: 'auto', label: 'All' }, { value: 'XW', label: String.raw`\(XW\)` }, { value: 'YW', label: String.raw`\(YW\)` }, { value: 'ZW', label: String.raw`\(ZW\)` }],
       showWhen: (p) => p.mode === 'shadows'
     },
-    { id: 'speed', label: 'Rotation speed', min: 0, max: 2, step: 0.05, default: 0.6, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'shadows' },
-    { id: 'extrude', label: 'Extrusion of the last axis', min: 0, max: 1, step: 0.01, default: 1, format: (v) => `${Math.round(v * 100)}%`, showWhen: (p) => p.mode === 'shadows' },
-    { id: 'cascade', type: 'toggle', label: 'Shadow cascade (3D → 2D → 1D)', default: true, showWhen: (p) => p.mode === 'shadows' },
+    { id: 'speed', group: 'Motion & shadow', label: 'Rotation speed', min: 0, max: 2, step: 0.05, default: 0.6, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'shadows' },
+    { id: 'extrude', group: 'Motion & shadow', label: 'Extrusion of the last axis', min: 0, max: 1, step: 0.01, default: 1, format: (v) => String.raw`\(${Math.round(v * 100)}\%\)`, showWhen: (p) => p.mode === 'shadows' },
+    { id: 'cascade', group: 'Motion & shadow', type: 'toggle', label: String.raw`Shadow cascade \((3\mathrm{D}\to2\mathrm{D}\to1\mathrm{D})\)`, default: true, showWhen: (p) => p.mode === 'shadows' },
     // ---------------- Quotient ----------------
     {
-      id: 'space', type: 'choice', label: 'Space', default: 3,
-      options: [{ value: 2, label: 'R² → RP¹' }, { value: 3, label: 'R³ → RP²' }],
+      id: 'space', group: 'Model', type: 'choice', label: 'Space', default: 3,
+      options: [{ value: 2, label: String.raw`\(\mathbb{R}^2\to\mathbb{RP}^1\)` }, { value: 3, label: String.raw`\(\mathbb{R}^3\to\mathbb{RP}^2\)` }],
       showWhen: (p) => p.mode === 'quotient'
     },
     {
-      id: 'view', type: 'choice', label: 'View', default: 'side',
+      id: 'view', group: 'Model', type: 'choice', label: 'View', default: 'side',
       options: [{ value: 'vector', label: 'Vector space' }, { value: 'side', label: 'Side by side' }, { value: 'proj', label: 'Projectivized' }],
       showWhen: (p) => p.mode === 'quotient'
     },
     {
-      id: 'model', type: 'choice', label: 'Model of P(V)', default: 'chart',
-      options: [{ value: 'chart', label: 'Affine chart' }, { value: 'sphere', label: 'Sphere / ±' }],
+      id: 'model', group: 'Model', type: 'choice', label: String.raw`Model of \(\mathbb{P}(V)\)`, default: 'chart',
+      options: [{ value: 'chart', label: 'Affine chart' }, { value: 'sphere', label: String.raw`Sphere / \(\pm\)` }],
       showWhen: (p) => p.mode === 'quotient'
     },
-    { id: 'theta', label: 'Direction θ', min: 0, max: 360, step: 1, default: 50, format: (v) => `${v}°`, showWhen: (p) => p.mode === 'quotient' },
-    { id: 'phi', label: 'Inclination φ', min: 5, max: 175, step: 1, default: 55, format: (v) => `${v}°`, showWhen: (p) => p.mode === 'quotient' && p.space === 3 },
-    { id: 'len', label: 'Length |v|', min: 0.3, max: 1.2, step: 0.01, default: 0.8, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'quotient' },
-    { id: 'lambda', label: 'Scalar λ  (point λv)', min: -3, max: 3, step: 0.01, default: 1.6, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'quotient' },
-    { id: 'collapse', label: 'Collapse classes to points', min: 0, max: 1, step: 0.01, default: 0, format: (v) => `${Math.round(v * 100)}%`, showWhen: (p) => p.mode === 'quotient' && p.view !== 'proj' },
-    { id: 'parallels', type: 'toggle', label: 'Show parallels meeting at infinity', default: false, showWhen: (p) => p.mode === 'quotient' && p.space === 3 && !p.applyH },
-    { id: 'alpha', label: 'Direction of the parallels', min: 0, max: 180, step: 1, default: 25, format: (v) => `${v}°`, showWhen: (p) => p.mode === 'quotient' && p.space === 3 && p.parallels && !p.applyH },
-    { id: 'applyH', type: 'toggle', label: 'Act on V with the Ladder matrix H', default: false, showWhen: (p) => p.mode === 'quotient' && p.space === 3 },
+    { id: 'theta', group: 'Vector class', label: String.raw`Direction \(\theta\)`, min: 0, max: 360, step: 1, default: 50, format: (v) => String.raw`\(${v}^\circ\)`, showWhen: (p) => p.mode === 'quotient' },
+    { id: 'phi', group: 'Vector class', label: String.raw`Inclination \(\varphi\)`, min: 5, max: 175, step: 1, default: 55, format: (v) => String.raw`\(${v}^\circ\)`, showWhen: (p) => p.mode === 'quotient' && p.space === 3 },
+    { id: 'len', group: 'Vector class', label: String.raw`Length \(\lvert v\rvert\)`, min: 0.3, max: 1.2, step: 0.01, default: 0.8, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'quotient' },
+    { id: 'lambda', group: 'Vector class', label: String.raw`Scalar \(\lambda\) (point \(\lambda v\))`, min: -3, max: 3, step: 0.01, default: 1.6, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'quotient' },
+    { id: 'collapse', group: 'Projective map', label: 'Collapse classes to points', min: 0, max: 1, step: 0.01, default: 0, format: (v) => String.raw`\(${Math.round(v * 100)}\%\)`, showWhen: (p) => p.mode === 'quotient' && p.view !== 'proj' },
+    { id: 'parallels', group: 'Projective map', type: 'toggle', label: 'Show parallels meeting at infinity', default: false, showWhen: (p) => p.mode === 'quotient' && p.space === 3 && !p.applyH },
+    { id: 'alpha', group: 'Projective map', label: 'Direction of the parallels', min: 0, max: 180, step: 1, default: 25, format: (v) => String.raw`\(${v}^\circ\)`, showWhen: (p) => p.mode === 'quotient' && p.space === 3 && p.parallels && !p.applyH },
+    { id: 'applyH', group: 'Projective map', type: 'toggle', label: String.raw`Act on \(V\) with the Ladder matrix \(H\)`, default: false, showWhen: (p) => p.mode === 'quotient' && p.space === 3 },
     // ---------------- Ladder ----------------
-    { id: 'rot', label: 'Euclid · rotation', min: -180, max: 180, step: 1, default: 0, format: (v) => `${v}°`, showWhen: (p) => p.mode === 'ladder' || p.applyH },
-    { id: 'tx', label: 'Euclid · shift x', min: -1, max: 1, step: 0.01, default: 0, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'ladder' },
-    { id: 'ty', label: 'Euclid · shift y', min: -1, max: 1, step: 0.01, default: 0, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'ladder' },
-    { id: 'sx', label: 'Affine · stretch x', min: 0.4, max: 2, step: 0.01, default: 1, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'ladder' || p.applyH },
-    { id: 'sy', label: 'Affine · stretch y', min: 0.4, max: 2, step: 0.01, default: 1, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'ladder' || p.applyH },
-    { id: 'shear', label: 'Affine · shear', min: -1, max: 1, step: 0.01, default: 0, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'ladder' || p.applyH },
-    { id: 'p1', label: 'Projective · tilt x', min: -0.6, max: 0.6, step: 0.01, default: 0, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'ladder' || p.applyH },
-    { id: 'p2', label: 'Projective · tilt y', min: -0.6, max: 0.6, step: 0.01, default: 0, format: (v) => v.toFixed(2), showWhen: (p) => p.mode === 'ladder' || p.applyH }
+    { id: 'rot', group: 'Euclidean', label: 'Rotation', min: -180, max: 180, step: 1, default: 0, format: (v) => String.raw`\(${v}^\circ\)`, showWhen: (p) => p.mode === 'ladder' || p.applyH },
+    { id: 'tx', group: 'Euclidean', label: String.raw`Shift \(x\)`, min: -1, max: 1, step: 0.01, default: 0, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'ladder' },
+    { id: 'ty', group: 'Euclidean', label: String.raw`Shift \(y\)`, min: -1, max: 1, step: 0.01, default: 0, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'ladder' },
+    { id: 'sx', group: 'Affine', label: String.raw`Stretch \(x\)`, min: 0.4, max: 2, step: 0.01, default: 1, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'ladder' || p.applyH },
+    { id: 'sy', group: 'Affine', label: String.raw`Stretch \(y\)`, min: 0.4, max: 2, step: 0.01, default: 1, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'ladder' || p.applyH },
+    { id: 'shear', group: 'Affine', label: 'Shear', min: -1, max: 1, step: 0.01, default: 0, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'ladder' || p.applyH },
+    { id: 'p1', group: 'Projective', label: String.raw`Tilt \(x\)`, min: -0.6, max: 0.6, step: 0.01, default: 0, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'ladder' || p.applyH },
+    { id: 'p2', group: 'Projective', label: String.raw`Tilt \(y\)`, min: -0.6, max: 0.6, step: 0.01, default: 0, format: (v) => String.raw`\(${v.toFixed(2)}\)`, showWhen: (p) => p.mode === 'ladder' || p.applyH }
   ],
 
   group: null,
   layers: null,
   _t: 0,
+  _introT: 1,
 
   // ======================================================================================
   onActivate(engine) {
     this.engine = engine;
     this.group = new THREE.Group();
+    this._viewportWidth = window.innerWidth;
+    this._introT = shouldAnimateIntro() ? 0 : 1;
+    this.group.scale.setScalar(this._stageScaleForWidth(this._viewportWidth) * (this._introT < 1 ? 0.84 : 1));
+    this.group.position.y = this._introT < 1 ? -0.08 : 0.08;
+    this.group.rotation.y = this._introT < 1 ? -0.1 : 0;
     this.layers = { shadows: new THREE.Group(), quotient: new THREE.Group(), ladder: new THREE.Group() };
     Object.values(this.layers).forEach((l) => this.group.add(l));
     this.layers.ladder.rotation.x = -0.45;
@@ -202,6 +221,7 @@ export const ProjectionSpell = {
     this.engine.spellLayer.remove(this.group);
     this.group = null;
     this.layers = null;
+    this._introT = 1;
   },
 
   onParamChange(id) {
@@ -214,11 +234,32 @@ export const ProjectionSpell = {
 
   onUpdate(elapsed, delta) {
     if (!this.layers) return;
+    if (window.innerWidth !== this._viewportWidth) {
+      this._viewportWidth = window.innerWidth;
+      this.group.scale.setScalar(this._stageScaleForWidth(this._viewportWidth));
+    }
+    if (this._introT < 1) {
+      if (!shouldAnimateIntro()) this._introT = 1;
+      else this._introT = Math.min(1, this._introT + delta / 0.95);
+      const eased = this._introT * this._introT * (3 - 2 * this._introT);
+      this.group.scale.setScalar(this._stageScaleForWidth(this._viewportWidth) * (0.84 + eased * 0.16));
+      this.group.position.y = -0.08 + eased * 0.16;
+      this.group.rotation.y = (1 - eased) * -0.1;
+    }
     const mode = this.params.mode;
     if (mode === 'shadows') this._updateShadows(delta);
-    else if (mode === 'quotient') this._updateQuotient(elapsed);
+    else if (mode === 'quotient') {
+      if (this._dirty) this._updateQuotient(elapsed);
+      else this.q.lam.scale.setScalar(1 + 0.15 * Math.sin(elapsed * 4));
+    }
     else if (this._dirty) this._updateLadder();
     this._dirty = false;
+  },
+
+  _stageScaleForWidth(width) {
+    if (width <= 560) return 0.3;
+    if (width <= 860) return 0.5;
+    return 0.7;
   },
 
   _applyMode() {
@@ -235,7 +276,14 @@ export const ProjectionSpell = {
     this.sh = {
       lines: new DynLines(1400, 0.95),
       pts: new DynPoints(70, 0.06),
-      frame: new DynLines(8, 0.5)
+      frame: new DynLines(8, 0.5),
+      scratch: {
+        sourceA: [0, 0, 0], sourceB: [0, 0, 0],
+        planeA: [0, 0, 0], planeB: [0, 0, 0],
+        lineA: [0, 0, 0], lineB: [0, 0, 0],
+        rayA: [0, 0, 0], rayB: [0, 0, 0],
+        point: [0, 0, 0]
+      }
     };
     L.add(this.sh.frame.obj, this.sh.lines.obj, this.sh.pts.obj);
     // Fixed frames for the 2D floor shadow and the 1D line shadow
@@ -252,7 +300,14 @@ export const ProjectionSpell = {
   _buildCube() {
     const n = this.params.dim ?? 4;
     const count = 1 << n;
-    this.cube = { n, count, edges: [] };
+    this.cube = {
+      n,
+      count,
+      edges: [],
+      projected: Array.from({ length: count }, () => [0, 0, 0]),
+      visibility: new Float32Array(count),
+      coordinates: new Float64Array(n)
+    };
     for (let v = 0; v < count; v++) {
       for (let a = 0; a < n; a++) {
         if (!(v & (1 << a))) this.cube.edges.push([v, v | (1 << a)]);
@@ -281,10 +336,9 @@ export const ProjectionSpell = {
       planes.push([0, 1, 0.5]);
     }
 
-    const P = [];
-    const vis = [];
-    const depth = [];
-    const c = new Array(n);
+    const P = this.cube.projected;
+    const vis = this.cube.visibility;
+    const c = this.cube.coordinates;
     for (let v = 0; v < count; v++) {
       for (let a = 0; a < n; a++) {
         const sign = v & (1 << a) ? 1 : -1;
@@ -299,7 +353,6 @@ export const ProjectionSpell = {
         c[i] = x;
         c[j] = y;
       }
-      depth.push(n >= 4 ? c[3] / s : n === 3 ? c[2] / s : 0);
       // Project down one dimension at a time until 3D remains
       let v3 = 1;
       for (let k = n - 1; k >= 3; k--) {
@@ -310,47 +363,54 @@ export const ProjectionSpell = {
           for (let i = 0; i < k; i++) c[i] *= f;
         }
       }
-      P.push([c[0] * 1.15, (c[1] ?? 0) * 1.15, (c[2] ?? 0) * 1.15]);
-      vis.push(v3);
+      P[v][0] = c[0] * 0.98;
+      P[v][1] = (c[1] ?? 0) * 0.98;
+      P[v][2] = (c[2] ?? 0) * 0.98;
+      vis[v] = v3;
     }
 
     const L = this.sh.lines;
     const pts = this.sh.pts;
     L.reset();
     pts.reset();
-    const colorOf = (v) => (n >= 3 ? hsl(0.52 + 0.33 * (depth[v] * 0.5 + 0.5), 0.85, 0.6) : hsl(0.12, 0.85, 0.6));
     const floorY = -1.2;
     const lineZ = 1.7;
     const cascade = p.cascade;
+    const { sourceA, sourceB, planeA, planeB, lineA, lineB, rayA, rayB, point } = this.sh.scratch;
+    const rayStride = Math.max(1, Math.ceil(count / 12));
     for (const [a, b] of edges) {
       const k = Math.min(vis[a], vis[b]);
       if (k < 0.02) continue;
-      const ca = scale3(colorOf(a), vis[a]);
-      const cb = scale3(colorOf(b), vis[b]);
-      L.add(P[a], P[b], ca, cb);
+      L.add(P[a], P[b],
+        scale3Into(SHADOW_SOURCE, vis[a], sourceA),
+        scale3Into(SHADOW_SOURCE, vis[b], sourceB));
       if (cascade) {
-        const a2 = [P[a][0], floorY, P[a][2]];
-        const b2 = [P[b][0], floorY, P[b][2]];
-        L.add(a2, b2, scale3([0.35, 0.55, 0.9], vis[a] * 0.8), scale3([0.35, 0.55, 0.9], vis[b] * 0.8));
-        L.add([a2[0], floorY, lineZ], [b2[0], floorY, lineZ], scale3(GOLD, vis[a] * 0.9), scale3(GOLD, vis[b] * 0.9));
+        planeA[0] = P[a][0]; planeA[1] = floorY; planeA[2] = P[a][2];
+        planeB[0] = P[b][0]; planeB[1] = floorY; planeB[2] = P[b][2];
+        lineA[0] = planeA[0]; lineA[1] = floorY; lineA[2] = lineZ;
+        lineB[0] = planeB[0]; lineB[1] = floorY; lineB[2] = lineZ;
+        L.add(planeA, planeB,
+          scale3Into(SHADOW_PLANE, vis[a] * 0.8, sourceA),
+          scale3Into(SHADOW_PLANE, vis[b] * 0.8, sourceB));
+        L.add(lineA, lineB,
+          scale3Into(GOLD, vis[a] * 0.9, planeA),
+          scale3Into(GOLD, vis[b] * 0.9, planeB));
       }
     }
     for (let v = 0; v < count; v++) {
       if (vis[v] < 0.02) continue;
-      pts.add(P[v], scale3([1, 1, 1], vis[v]));
-      if (cascade) {
-        L.add(P[v], [P[v][0], floorY, P[v][2]], [0.1 * vis[v], 0.14 * vis[v], 0.2 * vis[v]]);
-        L.add([P[v][0], floorY, P[v][2]], [P[v][0], floorY, lineZ], [0.1 * vis[v], 0.09 * vis[v], 0.04 * vis[v]]);
+      const pulse = 0.78 + 0.22 * (0.5 + 0.5 * Math.sin(t * 2.2 + v * 0.38));
+      pts.add(P[v], scale3Into(SHADOW_POINT, vis[v] * pulse, point));
+      if (cascade && v % rayStride === 0) {
+        planeA[0] = P[v][0]; planeA[1] = floorY; planeA[2] = P[v][2];
+        lineA[0] = P[v][0]; lineA[1] = floorY; lineA[2] = lineZ;
+        L.add(P[v], planeA, scale3Into(SHADOW_RAY, vis[v] * 0.3, rayB));
+        L.add(planeA, lineA, scale3Into(SHADOW_RAY, vis[v] * 0.65, rayA));
       }
     }
     L.flush();
     pts.flush();
     this.sh.frame.obj.visible = cascade;
-    if (!this._ro || this._ro > 20) {
-      this._ro = 0;
-      this._updateReadout();
-    }
-    this._ro++;
   },
 
   // ======================================================================================
@@ -358,6 +418,7 @@ export const ProjectionSpell = {
   // ======================================================================================
   _buildQuotient() {
     const L = this.layers.quotient;
+    L.scale.setScalar(0.78);
     const q = (this.q = {});
     q.gV = new THREE.Group();
     q.gP = new THREE.Group();
@@ -367,7 +428,7 @@ export const ProjectionSpell = {
 
     // Classes: unit directions (one per line through the origin)
     q.dirs3 = [];
-    const N3 = 44;
+    const N3 = 32;
     for (let i = 0; i < N3; i++) {
       const z = (i + 0.5) / N3;
       const r = Math.sqrt(1 - z * z);
@@ -375,7 +436,7 @@ export const ProjectionSpell = {
       q.dirs3.push([r * Math.cos(a), r * Math.sin(a), z]);
     }
     q.dirs2 = [];
-    const N2 = 22;
+    const N2 = 18;
     for (let i = 0; i < N2; i++) {
       const a = ((i + 0.5) / N2) * Math.PI;
       q.dirs2.push([Math.cos(a), Math.sin(a), 0]);
@@ -584,12 +645,12 @@ export const ProjectionSpell = {
       const col = hsl(hueOf(i), 0.8, 0.62);
       for (const lm of MULTIPLES) {
         const m = place(u[0] * lm, u[1] * lm, u[2] * lm);
-        q.cloud.add(m.p, scale3(col, m.k));
+        q.cloud.add(m.p, scale3(col, 0.58 * m.k));
       }
       if (c < 0.995) {
         const a = T(-u[0] * 1.4, -u[1] * 1.4, -u[2] * 1.4);
         const b = T(u[0] * 1.4, u[1] * 1.4, u[2] * 1.4);
-        q.classLines.add(a, b, scale3(col, 0.32 * (1 - c)));
+        q.classLines.add(a, b, scale3(col, 0.23 * (1 - c)));
       }
     }
     q.cloud.flush();
@@ -643,11 +704,6 @@ export const ProjectionSpell = {
       q.link.add(toWorld(q.gV, lamP.p), tw, [0.6, 0.45, 0.1], GOLD);
     }
     q.link.flush();
-    this._ro = (this._ro || 0) + 1;
-    if (this._ro > 10) {
-      this._ro = 0;
-      this._updateReadout();
-    }
   },
 
   _updateProjective(dirs, N, T, dim, chart, v0, hueOf) {
@@ -834,11 +890,13 @@ export const ProjectionSpell = {
       const last = v[dim - 1];
       const lam = f(p.lambda);
       const hom = `[${v.map((x) => f(x)).join(' : ')}]`;
-      const chartPt = Math.abs(last) < 0.01 ? '∞  (last coordinate = 0)' : `(${v.slice(0, dim - 1).map((x) => f(x / last)).join(', ')})`;
+      const chartPt = Math.abs(last) < 0.01
+        ? String.raw`\(\infty\; (v_${dim}=0)\)`
+        : String.raw`\(\left(${v.slice(0, dim - 1).map((x) => f(x / last)).join(', ')}\right)\)`;
       text = Math.abs(p.lambda) < 0.01
         ? String.raw`\(\lambda=0\)` + ' sends ' + String.raw`\(v\)` + ' to the origin, which is excluded: 0 belongs to no line, so it is not a point of ' + String.raw`\(\mathbb{P}(V)\)`
         : String.raw`\(v=(${v.map((x) => f(x)).join(', ')})\) → \(${hom}\) → chart ${chartPt} • \(\lambda=${lam}: \lambda v=(${w.map((x) => f(x)).join(', ')})\) → same point ⇒ \(v\sim\lambda v\)`;
-      if (p.parallels && dim === 3 && !p.applyH) text += ' • two parallel lines = two planes through O, meeting in a direction of z = 0: a point at infinity';
+      if (p.parallels && dim === 3 && !p.applyH) text += String.raw` • two parallel lines = two planes through \(O\), meeting in a direction of \(z=0\): a point at infinity`;
     } else {
       const H = this._H();
       const m = (x, y) => {

@@ -14,6 +14,9 @@ export class CurvedBook3D {
     this.scene = engine.scene;
     this.camera = engine.camera;
     this.renderer = engine.renderer;
+    this._anchorLayout = null;
+    this._onAnchorScroll = () => this.updateAnchor();
+    window.addEventListener('scroll', this._onAnchorScroll, { passive: true });
 
     this.opened = false;
     this.focusHidden = false;
@@ -1768,7 +1771,21 @@ if (uTocEnabled > 0.5) {
     return out.copy(this._anchorCenterLocal).applyMatrix4(this.bookGroup.matrixWorld);
   }
 
-  updateAnchor(delta = 1 / 60) {
+  _measureAnchorLayout() {
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    if (!(canvas.width > 0 && canvas.height > 0)) return null;
+    const measuredStage = this.container?.getBoundingClientRect?.();
+    const dock = this.container.parentElement?.querySelector('.book-bottom-bar')?.getBoundingClientRect();
+    const copyRect = ({ left, top, width, height, bottom }) => ({ left, top, width, height, bottom });
+    const canvasRect = copyRect(canvas);
+    const stageRect = measuredStage && measuredStage.width > 0 && measuredStage.height > 0
+      ? copyRect(measuredStage)
+      : canvasRect;
+    const dockRect = dock && dock.height > 0 ? copyRect(dock) : null;
+    return { canvasRect, stageRect, dockRect };
+  }
+
+  updateAnchor(delta = 1 / 60, refreshLayout = true) {
     if (!this.bookGroup || !this.camera || !this.engine?.renderer?.domElement) return;
 
     // The book is persistent outside Focus Mode. Do not force individual cover
@@ -1776,17 +1793,12 @@ if (uTocEnabled > 0.5) {
     // and folded duplicate leaf beneath the front cover.
     this.bookGroup.visible = !this.focusHidden;
 
-    const canvasRect = this.engine.renderer.domElement.getBoundingClientRect();
-    if (!(canvasRect.width > 0 && canvasRect.height > 0)) return;
-    const measuredStage = this.container?.getBoundingClientRect?.();
-    const stageRect = measuredStage && measuredStage.width > 0 && measuredStage.height > 0
-      ? measuredStage
-      : { left: canvasRect.left, top: canvasRect.top, width: canvasRect.width, height: canvasRect.height };
+    if (refreshLayout || !this._anchorLayout) this._anchorLayout = this._measureAnchorLayout();
+    if (!this._anchorLayout) return;
+    const { canvasRect, stageRect, dockRect } = this._anchorLayout;
 
     this.camera.updateMatrixWorld(true);
     const overhead = this.poseMode === 'top-down' || this.poseMode === 'sealed';
-    const dock = this.container.parentElement?.querySelector('.book-bottom-bar');
-    const dockRect = dock?.getBoundingClientRect?.();
 
     const stageCenterX = stageRect.left + stageRect.width * 0.5;
     const stageCenterY = overhead

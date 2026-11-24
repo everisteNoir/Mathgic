@@ -8,6 +8,8 @@ const MATH_DELIMITERS = [
   { left: '$$', right: '$$', display: true },
   { left: '$', right: '$', display: false }
 ];
+const HAS_DELIMITED_MATH = /\\\(|\\\[|\$\$|\$[^$]+\$/;
+let katexWarningShown = false;
 
 const UNICODE_LATEX = [
   [/ℕ/g, String.raw`\mathbb{N}`],
@@ -87,17 +89,23 @@ export function renderDisplayFormula(target, source) {
   } else {
     target.textContent = source;
     target.dataset.mathRendered = 'fallback';
+    reportKatexUnavailable();
   }
 }
 
 export function renderMathInElementSafe(root) {
-  if (!root || !window.renderMathInElement) return;
+  if (!root) return false;
+  if (!window.renderMathInElement || !window.katex?.render) {
+    if (HAS_DELIMITED_MATH.test(root.textContent || '')) reportKatexUnavailable();
+    return false;
+  }
   window.renderMathInElement(root, {
     delimiters: MATH_DELIMITERS,
     throwOnError: false,
     strict: 'ignore',
     ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
   });
+  return true;
 }
 
 
@@ -106,7 +114,14 @@ const INLINE_MATH_TOKEN = /(\|[^|]+\||2\^ℵ[₀₁₂₃₄₅]|ℵ[₀₁₂�
 export function renderInlineMathText(target, source = '') {
   if (!target) return;
   const text = String(source);
+  if (target.dataset.mathSource === text && target.childNodes.length) return;
+  target.dataset.mathSource = text;
   target.replaceChildren();
+  if (HAS_DELIMITED_MATH.test(text)) {
+    target.textContent = text;
+    renderMathInElementSafe(target);
+    return;
+  }
   let cursor = 0;
   for (const match of text.matchAll(INLINE_MATH_TOKEN)) {
     const token = match[0];
@@ -119,11 +134,17 @@ export function renderInlineMathText(target, source = '') {
     cursor = index + token.length;
   }
   if (cursor < text.length) target.append(document.createTextNode(text.slice(cursor)));
-  renderMathInElementSafe(target);
+  if (target.querySelector('.math-inline')) renderMathInElementSafe(target);
 }
 
 export function setMathReadout(target, text) {
   if (!target) return;
   target.textContent = text;
   renderMathInElementSafe(target);
+}
+
+function reportKatexUnavailable() {
+  if (katexWarningShown) return;
+  katexWarningShown = true;
+  console.error('KaTeX failed to load; mathematical content could not be typeset.');
 }

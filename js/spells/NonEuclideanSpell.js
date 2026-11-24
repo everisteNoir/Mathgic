@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
+import { fxState } from '../core/FXState.js?v=23';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=26';
+
+const shouldAnimateIntro = () =>
+  fxState.enabled && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * NonEuclideanSpell.js — Mathgic 4: Non-Euclidean Space & Gaussian Curvature Portal
@@ -15,16 +19,16 @@ export const NonEuclideanSpell = {
   hasLiveReadout: true,
   initialReadout: String.raw`HYPERBOLIC \(K=-0.80\) • Triangle \(\sum\theta<180^\circ\) • Parallels diverge`,
   description:
-    'Warps the fabric of space between Hyperbolic saddle geometry (K < 0), flat Euclidean space (K = 0), and Riemannian spherical curvature (K > 0).',
+    String.raw`Warps the fabric of space between Hyperbolic saddle geometry \((K<0)\), flat Euclidean space \((K=0)\), and Riemannian spherical curvature \((K>0)\).`,
   controls: [
     {
       id: 'curvature',
-      label: 'Gaussian Curvature (K)',
+      label: String.raw`Gaussian Curvature \((K)\)`,
       min: -1.0,
       max: 1.0,
       step: 0.02,
       default: -0.8,
-      format: (v) => (v > 0 ? `+${v.toFixed(2)} K` : `${v.toFixed(2)} K`)
+      format: (v) => String.raw`\(${v > 0 ? '+' : ''}${v.toFixed(2)}\,K\)`
     },
     {
       id: 'waveSpeed',
@@ -33,7 +37,7 @@ export const NonEuclideanSpell = {
       max: 2.5,
       step: 0.05,
       default: 1.0,
-      format: (v) => `${v.toFixed(2)}x`
+      format: (v) => String.raw`\(${v.toFixed(2)}\times\)`
     }
   ],
 
@@ -42,10 +46,15 @@ export const NonEuclideanSpell = {
   wireMesh: null,
   geodesicTriangle: null,
   basePositions: null,
+  _introT: 1,
 
   onActivate(engine) {
     this.engine = engine;
     this.group = new THREE.Group();
+    this._introT = shouldAnimateIntro() ? 0 : 1;
+    this.group.scale.setScalar(this._introT < 1 ? 0.82 : 1);
+    this.group.rotation.y = this._introT < 1 ? -0.12 : 0;
+    this.group.position.y = this._introT < 1 ? -0.12 : 0;
 
     // Polar disc mesh with high radial & angular resolution for smooth curvature deformation
     const radialSegs = 36;
@@ -191,8 +200,16 @@ export const NonEuclideanSpell = {
     triAttr.needsUpdate = true;
   },
 
-  onUpdate(elapsed) {
+  onUpdate(elapsed, delta) {
     this._deformManifold(elapsed);
+    if (this._introT < 1 && this.group) {
+      if (!shouldAnimateIntro()) this._introT = 1;
+      else this._introT = Math.min(1, this._introT + delta / 1.05);
+      const eased = this._introT * this._introT * (3 - 2 * this._introT);
+      this.group.scale.setScalar(0.82 + eased * 0.18);
+      this.group.rotation.y = (1 - eased) * -0.12;
+      this.group.position.y = (1 - eased) * -0.12;
+    }
   },
 
   onDeactivate() {
@@ -206,6 +223,7 @@ export const NonEuclideanSpell = {
       this.manifoldMesh = null;
       this.wireMesh = null;
       this.geodesicTriangle = null;
+      this._introT = 1;
     }
   }
 };

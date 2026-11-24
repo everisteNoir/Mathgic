@@ -3,9 +3,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { createGlobalUniforms } from './Uniforms.js?v=23';
-import { HoldFX } from './HoldFX.js?v=23';
+import { HoldFX } from './HoldFX.js?v=30';
 import { fxState } from './FXState.js?v=23';
-import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js?v=23';
+import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js?v=26';
 
 const WORLD_X = new THREE.Vector3(1, 0, 0);
 const WORLD_Y = new THREE.Vector3(0, 1, 0);
@@ -34,6 +34,8 @@ export class Engine {
     this._solidPrewarmQueue = [];
     this._solidPrewarmScheduled = false;
     this._solidPrewarmed = new Set();
+    this._compiledSolidShaders = new Set();
+    this._compilingSolidShaders = new Set();
     this._solidPrewarmHandle = null;
     this._solidPrewarmTimer = null;
     this.spellLayer = new THREE.Group();
@@ -371,8 +373,8 @@ export class Engine {
     this.focusMode = null;
     this.focusBlend = 0;
     this.book?.setFocusHidden?.(false);
-    this.book?.updateAnchor?.();
     document.body.classList.remove('focus-mode');
+    this.book?.updateAnchor?.();
   }
 
   _applyRenderPixelRatio(ratio) {
@@ -420,13 +422,14 @@ export class Engine {
     if (this.bookCameraMode === 'chapter') this._cameraUpTarget.set(0, 1, 0);
   }
 
-  playChapterSignature(chapterId, color = '#d9b979') {
+  playChapterSignature(chapterId, color = '#d9b979', secondaryColor = '#8bd8f4') {
     this._clearChapterSignature();
+    if (!fxState.enabled || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const group = new THREE.Group();
     group.name = `ChapterSignature:${chapterId}`;
     this.worldPivot.add(group);
     const primary = new THREE.Color(color || '#d9b979');
-    const secondary = new THREE.Color('#8bd8f4');
+    const secondary = new THREE.Color(secondaryColor || '#8bd8f4');
     const addLine = (points, tint = primary, opacity = 0.9, width = 0.012) => {
       const curve = new THREE.CatmullRomCurve3(points);
       const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(Math.max(24, points.length * 8)));
@@ -443,6 +446,13 @@ export class Engine {
       group.add(points);
       return points;
     };
+    const ringPoints = Array.from({ length: 49 }, (_, i) => {
+      const angle = (i / 48) * Math.PI * 2;
+      return new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0);
+    });
+    const arrivalRing = addLine(ringPoints, secondary, 0.62, 0.01);
+    arrivalRing.scale.setScalar(0.08);
+    this._chapterSignatureRing = arrivalRing;
 
     if (chapterId === 'golden-ratio') {
       const pts = [];
@@ -504,7 +514,7 @@ export class Engine {
       }
       lines.forEach((pts, i) => addLine(pts, i % 2 ? secondary : primary, .75));
     }
-    this._chapterSignature = { group, age: 0, duration: 1.85, chapterId };
+    this._chapterSignature = { group, age: 0, duration: 1.5, chapterId };
   }
 
   _clearChapterSignature() {
@@ -520,6 +530,7 @@ export class Engine {
     this._chapterSignature = null;
     this._chapterSignatureReveal = null;
     this._chapterSignatureFacet = null;
+    this._chapterSignatureRing = null;
   }
 
   _updateChapterSignature(delta) {
@@ -539,6 +550,12 @@ export class Engine {
       geo.setDrawRange(0, Math.max(1, Math.floor(geo.attributes.position.count * e)));
     }
     if (this._chapterSignatureFacet) this._chapterSignatureFacet.scale.setScalar(.001 + e * .999);
+    if (this._chapterSignatureRing) {
+      this._chapterSignatureRing.scale.setScalar(0.08 + e * 1.12);
+      this._chapterSignatureRing.rotation.z += delta * 0.32;
+      this._chapterSignatureRing.material.opacity =
+        (this._chapterSignatureRing.userData.baseOpacity ?? 0.62) * Math.sin(Math.PI * t) * fade;
+    }
     if (t >= 1) this._clearChapterSignature();
   }
 
@@ -611,7 +628,10 @@ export class Engine {
     if (this.activeSolid) {
       const outgoing = this.activeSolid;
       outgoing.fxGroup.visible = false;
-      outgoing.particles.visible = false;
+      outgoing._ambientStartOpacity = outgoing.particles.material.opacity;
+      outgoing._ambientExit =
+        fxState.enabled && outgoing.particles.visible && outgoing._ambientStartOpacity > 0.001;
+      if (!outgoing._ambientExit) outgoing.particles.visible = false;
       if (outgoing.rootGroup.visible) {
         outgoing._exitAge = 0;
         outgoing._exitDuration = 1.42;
@@ -661,6 +681,7 @@ export class Engine {
       delay: hasOutgoing ? 1.42 : 0.08,
       duration: 2.05
     };
+    this._scheduleSolidShaderWarmup(built);
 
     // Default pose: every solid rests on its base face (reset any pitch/roll, keep it level).
     this.targetCameraQuat = new THREE.Quaternion();
@@ -695,8 +716,14 @@ export class Engine {
         this._solidPrewarmQueue.length = 0;
         return;
       }
-      const busy = document.hidden || this.solidTransitionActive || this.detonationActive || this.isHolding;
-      if (busy || (deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() < 8)) {
+      const busy = document.hidden
+        || this.solidTransitionActive
+        || this.detonationActive
+        || this.isHolding
+        || this.isDragging
+        || this.holdFX?.phase !== 'idle'
+        || this.uniforms.uUnfold.value > 0.01;
+      if (busy || (deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() < 12)) {
         this._queueNextSolidPrewarm(360);
         return;
       }
@@ -708,6 +735,7 @@ export class Engine {
         prepared.rootGroup.visible = false;
         prepared.resetForActivation?.(this.uniforms.uUnfold.value);
         this._storeSolidInCache(prepared);
+        this._scheduleSolidShaderWarmup(prepared, true);
         this._solidPrewarmed.add(id);
         if (this.performanceDiagnostics) this.performanceDiagnostics.lastPrewarmMs = performance.now() - started;
       }
@@ -715,6 +743,82 @@ export class Engine {
     };
 
     this._queueNextSolidPrewarm(520);
+  }
+
+  _scheduleSolidShaderWarmup(solid, allowCached = false) {
+    const solidId = solid.solidId;
+    if (this._compiledSolidShaders.has(solidId)
+      || this._compilingSolidShaders.has(solidId)
+      || typeof this.renderer.compileAsync !== 'function') return;
+
+    this._compilingSolidShaders.add(solidId);
+    const finish = () => this._compilingSolidShaders.delete(solidId);
+    const warm = (deadline) => {
+      const isAvailable = solid === this.activeSolid
+        || (allowCached && this.solidCache.get(solidId) === solid);
+      if (!isAvailable) {
+        finish();
+        return;
+      }
+      if (deadline && !deadline.didTimeout
+        && typeof deadline.timeRemaining === 'function'
+        && deadline.timeRemaining() < 4) {
+        window.requestIdleCallback(warm, { timeout: 900 });
+        return;
+      }
+
+      const rootWasVisible = solid.rootGroup.visible;
+      const pivotWasVisible = this.worldPivot.visible;
+      const originalParent = solid.rootGroup.parent;
+      if (!originalParent) this.worldPivot.add(solid.rootGroup);
+      const hiddenObjects = [];
+      solid.rootGroup.traverse((object) => {
+        if (!object.visible) {
+          hiddenObjects.push(object);
+          object.visible = true;
+        }
+      });
+      solid.rootGroup.visible = true;
+      this.worldPivot.visible = true;
+      const restoreVisibility = () => {
+        for (let i = 0; i < hiddenObjects.length; i++) hiddenObjects[i].visible = false;
+        solid.rootGroup.visible = rootWasVisible;
+        this.worldPivot.visible = pivotWasVisible;
+      };
+      let compilation;
+      let revealCompilation;
+      try {
+        solid.setCoreReveal?.(0.5, true);
+        revealCompilation = this.renderer.compileAsync(this.scene, this.camera);
+        solid.setCoreReveal?.(1, false);
+        const settledCompilation = this.renderer.compileAsync(this.scene, this.camera);
+        solid.setCoreReveal?.(0, false);
+        compilation = Promise.all([revealCompilation, settledCompilation]);
+      } catch (error) {
+        revealCompilation?.catch((compileError) => {
+          console.error(`Shader warm-up failed for ${solidId}.`, compileError);
+        });
+        solid.setCoreReveal?.(0, false);
+        restoreVisibility();
+        if (!originalParent) this.worldPivot.remove(solid.rootGroup);
+        finish();
+        console.error(`Shader warm-up failed for ${solidId}.`, error);
+        return;
+      }
+      restoreVisibility();
+      if (!originalParent) this.worldPivot.remove(solid.rootGroup);
+      compilation.then(() => {
+        this._compiledSolidShaders.add(solidId);
+      }).catch((error) => {
+        console.error(`Shader warm-up failed for ${solidId}.`, error);
+      }).finally(finish);
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(warm, { timeout: 900 });
+    } else {
+      window.setTimeout(() => warm(null), 100);
+    }
   }
 
   _queueNextSolidPrewarm(delay = 180) {
@@ -761,30 +865,75 @@ export class Engine {
     panel.textContent = 'MATHGIC PERFORMANCE\nCollecting frame data…';
     document.body.appendChild(panel);
     this.performanceDiagnostics = {
-      panel, sampleElapsed: 0, sampleFrames: 0, fps: 0,
-      frameMs: 0, lastPrewarmMs: 0
+      panel,
+      sampleElapsed: 0,
+      sampleFrames: 0,
+      fps: 0,
+      frameMs: 0,
+      frameTimes: new Float32Array(120),
+      updateTimes: new Float32Array(120),
+      renderTimes: new Float32Array(120),
+      frameIndex: 0,
+      frameCount: 0,
+      frameP95Ms: 0,
+      framePeakMs: 0,
+      updateMs: 0,
+      renderMs: 0,
+      updateP95Ms: 0,
+      updatePeakMs: 0,
+      renderP95Ms: 0,
+      renderPeakMs: 0,
+      lastFrameStartedAt: 0,
+      lastPrewarmMs: 0
     };
+    this.renderer.info.autoReset = false;
   }
 
-  _updatePerformanceDiagnostics(delta) {
+  _updatePerformanceDiagnostics(frameIntervalMs, updateMs, renderMs) {
     const stats = this.performanceDiagnostics;
     if (!stats) return;
-    stats.sampleElapsed += delta;
+    stats.sampleElapsed += frameIntervalMs / 1000;
     stats.sampleFrames++;
-    stats.frameMs = stats.frameMs ? stats.frameMs * 0.84 + delta * 1000 * 0.16 : delta * 1000;
+    stats.frameMs = stats.frameMs
+      ? stats.frameMs * 0.84 + frameIntervalMs * 0.16
+      : frameIntervalMs;
+    stats.frameTimes[stats.frameIndex] = frameIntervalMs;
+    stats.updateTimes[stats.frameIndex] = updateMs;
+    stats.renderTimes[stats.frameIndex] = renderMs;
+    stats.frameIndex = (stats.frameIndex + 1) % stats.frameTimes.length;
+    stats.frameCount = Math.min(stats.frameCount + 1, stats.frameTimes.length);
+    stats.updateMs = updateMs;
+    stats.renderMs = renderMs;
     if (stats.sampleElapsed < 0.4) return;
     stats.fps = stats.sampleFrames / Math.max(0.001, stats.sampleElapsed);
+    const frameTimes = Array.from(stats.frameTimes.subarray(0, stats.frameCount)).sort((a, b) => a - b);
+    const updateTimes = Array.from(stats.updateTimes.subarray(0, stats.frameCount)).sort((a, b) => a - b);
+    const renderTimes = Array.from(stats.renderTimes.subarray(0, stats.frameCount)).sort((a, b) => a - b);
+    const p95Index = Math.min(frameTimes.length - 1, Math.ceil(frameTimes.length * 0.95) - 1);
+    stats.frameP95Ms = frameTimes[p95Index];
+    stats.framePeakMs = frameTimes[frameTimes.length - 1];
+    stats.updateP95Ms = updateTimes[p95Index];
+    stats.updatePeakMs = updateTimes[updateTimes.length - 1];
+    stats.renderP95Ms = renderTimes[p95Index];
+    stats.renderPeakMs = renderTimes[renderTimes.length - 1];
     const info = this.renderer.info;
     const cacheCount = this.solidCache.size;
     stats.panel.textContent = [
       'MATHGIC · PERFORMANCE',
       `FPS          ${stats.fps.toFixed(1)}`,
       `Frame        ${stats.frameMs.toFixed(1)} ms`,
+      `Frame p95    ${stats.frameP95Ms.toFixed(1)} ms`,
+      `Frame peak   ${stats.framePeakMs.toFixed(1)} ms`,
+      `Update       ${stats.updateMs.toFixed(1)} ms`,
+      `Update p95   ${stats.updateP95Ms.toFixed(1)} / ${stats.updatePeakMs.toFixed(1)} ms`,
+      `Render CPU   ${stats.renderMs.toFixed(1)} ms`,
+      `Render p95   ${stats.renderP95Ms.toFixed(1)} / ${stats.renderPeakMs.toFixed(1)} ms`,
       `Draw calls   ${info.render.calls}`,
       `Triangles    ${info.render.triangles.toLocaleString()}`,
       `Geometries   ${info.memory.geometries}`,
       `Textures     ${info.memory.textures}`,
       `Cached solids ${cacheCount}/4`,
+      `Shader warm  ${this._compiledSolidShaders.size}/5 (+${this._compilingSolidShaders.size})`,
       `TOC redraws  ${this.book?.contentsLeftCanvas?.redrawCount ?? 0}/${this.book?.contentsRightCanvas?.redrawCount ?? 0}`,
       `TOC hovers   ${this.book?._contentsHoverChanges ?? 0}`,
       `Book visible ${this.book?.bookGroup?.visible ? 'yes' : 'no'}`,
@@ -828,6 +977,18 @@ export class Engine {
 
   _initEvents() {
     const dom = this.renderer.domElement;
+    let canvasRect;
+    let pointerWasOnCanvas = false;
+    const refreshCanvasRect = () => {
+      const { left, top, width, height } = dom.getBoundingClientRect();
+      canvasRect = { left, top, width, height };
+    };
+    refreshCanvasRect();
+    if (typeof ResizeObserver === 'function') {
+      this._canvasResizeObserver = new ResizeObserver(refreshCanvasRect);
+      this._canvasResizeObserver.observe(dom);
+    }
+    window.addEventListener('scroll', refreshCanvasRect, { passive: true });
 
     const getCoords = (e) => {
       if (e.touches && e.touches.length > 0) {
@@ -835,16 +996,21 @@ export class Engine {
       }
       return { x: e.clientX, y: e.clientY };
     };
+    const holdHitLocal = new THREE.Vector3();
+    const holdHitNormal = new THREE.Vector3();
 
     const onDown = (e) => {
+      pointerWasOnCanvas = true;
       const { x, y } = getCoords(e);
-      const rect = dom.getBoundingClientRect();
+      const rect = canvasRect;
+      if (!rect.width || !rect.height) return;
       this.pointerNDC.x = ((x - rect.left) / Math.max(1, rect.width)) * 2 - 1;
       this.pointerNDC.y = -((y - rect.top) / Math.max(1, rect.height)) * 2 + 1;
 
       // Charging starts only when the pointer actually lands on a visible solid.
       // This prevents accidental bursts on empty canvas space or on the book behind it.
       let solidIsFrontmost = false;
+      let holdHit = null;
       if (this.explorationVisible && this.holdInteractionEnabled && !this.solidTransitionActive && !this.detonationActive && this.activeSolid?.rootGroup.visible) {
         this.raycaster.setFromCamera(this.pointerNDC, this.camera);
         const solidTargets = this.activeSolid.interactiveTargets;
@@ -853,6 +1019,17 @@ export class Engine {
           ? this.raycaster.intersectObject(this.book.bookGroup, true)
           : [];
         solidIsFrontmost = !!solidHits.length && (!bookHits.length || solidHits[0].distance < bookHits[0].distance);
+        if (solidIsFrontmost) holdHit = solidHits[0];
+      }
+      if (holdHit) {
+        holdHitLocal.copy(holdHit.point);
+        this.activeSolid.rootGroup.worldToLocal(holdHitLocal);
+        holdHitNormal.copy(holdHitLocal);
+        if (holdHitNormal.lengthSq() < 0.001) holdHitNormal.set(0, 0, 1);
+        else holdHitNormal.normalize();
+        this.holdFX.setContact(holdHitLocal, holdHitNormal);
+      } else {
+        this.holdFX.clearContact();
       }
 
       if (this.detonationActive) {
@@ -868,8 +1045,19 @@ export class Engine {
     };
 
     const onMove = (e) => {
+      const onCanvas = e.target === dom || dom.contains(e.target);
+      if (!onCanvas && !this.isDragging) {
+        if (pointerWasOnCanvas) {
+          this._clearHoveredInteraction();
+          this.book?.clearPageHover?.();
+        }
+        pointerWasOnCanvas = false;
+        return;
+      }
+      if (onCanvas) pointerWasOnCanvas = true;
       const { x, y } = getCoords(e);
-      const rect = dom.getBoundingClientRect();
+      const rect = canvasRect;
+      if (!rect.width || !rect.height) return;
       this.pointerNDC.x = ((x - rect.left) / rect.width) * 2 - 1;
       this.pointerNDC.y = -((y - rect.top) / rect.height) * 2 + 1;
 
@@ -911,6 +1099,11 @@ export class Engine {
       this.isHolding = false;
     };
 
+    const onCancel = () => {
+      this.isDragging = false;
+      this.isHolding = false;
+    };
+
     const onWheel = (e) => {
       e.preventDefault();
       if (this.focusMode?.active) {
@@ -931,7 +1124,8 @@ export class Engine {
     const onDblClick = (e) => {
       if (this._pendingClickTimer) { clearTimeout(this._pendingClickTimer); this._pendingClickTimer = null; }
       const { x, y } = getCoords(e);
-      const rect = dom.getBoundingClientRect();
+      const rect = canvasRect;
+      if (!rect.width || !rect.height) return;
       this.pointerNDC.x = ((x - rect.left) / Math.max(1, rect.width)) * 2 - 1;
       this.pointerNDC.y = -((y - rect.top) / Math.max(1, rect.height)) * 2 + 1;
       if (!this.detonationActive) this.enterFocusModeFromPointer();
@@ -944,6 +1138,9 @@ export class Engine {
     dom.addEventListener('touchstart', onDown, { passive: true });
     window.addEventListener('touchmove', onMove, { passive: true });
     window.addEventListener('touchend', onUp);
+    dom.addEventListener('pointercancel', onCancel);
+    window.addEventListener('touchcancel', onCancel);
+    window.addEventListener('blur', onCancel);
 
     dom.addEventListener('wheel', onWheel, { passive: false });
     dom.addEventListener('dblclick', onDblClick);
@@ -955,6 +1152,7 @@ export class Engine {
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
       this.composer.setSize(w, h);
+      refreshCanvasRect();
     });
   }
 
@@ -1088,8 +1286,18 @@ export class Engine {
     const animate = () => {
       requestAnimationFrame(animate);
 
+      const diagnostics = this.performanceDiagnostics;
+      const frameStartedAt = diagnostics ? performance.now() : 0;
+      let frameIntervalMs = 0;
+      if (diagnostics) {
+        frameIntervalMs = diagnostics.lastFrameStartedAt
+          ? frameStartedAt - diagnostics.lastFrameStartedAt
+          : 0;
+        diagnostics.lastFrameStartedAt = frameStartedAt;
+      }
       const delta = Math.min(this.clock.getDelta(), 0.05);
       const elapsed = this.clock.getElapsedTime();
+      if (diagnostics && frameIntervalMs <= 0) frameIntervalMs = delta * 1000;
 
       this.uniforms.uTime.value = elapsed;
       this.uniforms.uDelta.value = delta;
@@ -1115,12 +1323,25 @@ export class Engine {
         const outgoing = this.retiringSolids[i];
         outgoing._exitAge += delta;
         const t = THREE.MathUtils.clamp(outgoing._exitAge / outgoing._exitDuration, 0, 1);
+        const exitAlpha = 1 - THREE.MathUtils.smoothstep(t, 0, 1);
+        if (outgoing._ambientExit) {
+          outgoing.particles.visible = exitAlpha > 0.002;
+          outgoing.particles.material.opacity = outgoing._ambientStartOpacity * exitAlpha;
+          outgoing.particles.scale.setScalar(Math.max(0.001, exitAlpha));
+          outgoing.particles.rotation.y = Math.PI * 2 * t;
+        }
+        outgoing.setCoreReveal?.(exitAlpha, fxState.enabled);
         // Keep the solid's world scale intact: its faces, edges and vertices are
         // responsible for the fracture motion. Shrinking the root would visually
         // collapse the whole model and hide the geometric shatter sequence.
         outgoing.setDetonation?.(Math.min(0.64, t * 0.64), outgoing._exitStyle || 'fire');
         if (t >= 1) {
           outgoing.endDetonation?.();
+          outgoing.particles.visible = false;
+          outgoing.particles.material.opacity = 0.85;
+          outgoing.particles.scale.setScalar(1);
+          outgoing.particles.rotation.set(0, 0, 0);
+          outgoing._ambientExit = false;
           this._storeSolidInCache(outgoing);
           this.retiringSolids.splice(i, 1);
         }
@@ -1128,11 +1349,15 @@ export class Engine {
 
       let introReady = true;
       let introActive = false;
+      let incomingProgress = 1;
+      let coreRevealProgress = 1;
       if (this._solidIntro?.solid === this.activeSolid) {
         introActive = true;
         this._solidIntro.age += delta;
         introReady = this._solidIntro.age >= this._solidIntro.delay;
         if (!introReady) {
+          incomingProgress = 0;
+          coreRevealProgress = 0;
           this.activeSolid.rootGroup.visible = false;
           this.activeSolid.setCoreReveal?.(0);
         } else {
@@ -1140,12 +1365,14 @@ export class Engine {
           const introProgress = THREE.MathUtils.clamp(
             (this._solidIntro.age - this._solidIntro.delay) / this._solidIntro.duration, 0, 1
           );
+          incomingProgress = introProgress;
           this.activeSolid.setReconstruction?.(introProgress);
           // The core is deliberately staggered behind the first vertex cues.
           // It grows from a dim seed to full elemental form instead of popping
           // into view at the same instant as the incoming root group.
           const coreProgress = THREE.MathUtils.smoothstep(introProgress, 0.06, 0.62);
-          this.activeSolid.setCoreReveal?.(coreProgress);
+          coreRevealProgress = coreProgress;
+          this.activeSolid.setCoreReveal?.(coreProgress, fxState.enabled);
           if (introProgress >= 1) {
             this.activeSolid.setCoreReveal?.(1);
             this._solidIntro = null;
@@ -1205,20 +1432,27 @@ export class Engine {
         }
         this.activeSolid.updateUpright();
         this.activeSolid.fxGroup.visible = rich && unfoldNow > 0.005;
-        this.activeSolid.particles.visible = rich && this.activeSolid.rootGroup.visible;
+        const ambientReveal = introActive ? THREE.MathUtils.smoothstep(incomingProgress, 0, 0.42) : 1;
+        this.activeSolid.particles.material.opacity = 0.85 * ambientReveal;
+        this.activeSolid.particles.scale.setScalar(0.08 + ambientReveal * 0.92);
+        this.activeSolid.particles.rotation.y = introActive ? Math.PI * 2 * ambientReveal : 0;
+        this.activeSolid.particles.visible =
+          fxState.enabled && this.activeSolid.rootGroup.visible && ambientReveal > 0.002;
 
-        // Interior cores are animated only while rich FX is enabled. Previously
-        // coreAnimator still rewrote hundreds of vertices/particles in FX Off,
-        // then immediately overwrote the transforms with the static pose.
+        // Start core motion with its reveal instead of switching from a static
+        // pose after the full topology intro has already completed.
         if (this.activeSolid.coreAnimator && this.activeSolid.rootGroup.visible) {
           const inner = this.activeSolid.innerGroup;
-          if (rich) {
+          const animateCore = fxState.enabled && (!introActive || coreRevealProgress > 0.002);
+          if (animateCore) {
             if (this._simple) {
               inner.scale.setScalar(1);
               inner.position.set(0, 0, 0);
+              this.activeSolid.coreAnimationTime = 0;
               this._simple = false;
             }
-            this.activeSolid.coreAnimator(elapsed, this.uniforms.uEnergy.value);
+            this.activeSolid.coreAnimationTime += delta;
+            this.activeSolid.coreAnimator(this.activeSolid.coreAnimationTime, this.uniforms.uEnergy.value);
           } else {
             this._simple = true;
             inner.position.set(0, 0, 0);
@@ -1328,7 +1562,8 @@ export class Engine {
       // The book no longer owns a second RAF for cover or page-turn animation.
       if (!this.focusMode) {
         this.book?.updateAnimation?.(delta, elapsed);
-        this.book?.updateAnchor?.(delta);
+        // DOM layout is refreshed by resize, scroll and book-state updates, not per frame.
+        this.book?.updateAnchor?.(delta, false);
       }
 
       // Move every interactive 3D object together; the book remains camera-anchored
@@ -1345,9 +1580,16 @@ export class Engine {
       // FX Off bypasses EffectComposer/UnrealBloom entirely. This avoids two
       // full-resolution post-processing targets on the performance-sensitive
       // Polyhedra chapter while keeping the same Scene and WebGLRenderer.
+      const updateMs = diagnostics ? performance.now() - frameStartedAt : 0;
+      if (diagnostics) this.renderer.info.reset();
+      const renderStartedAt = diagnostics ? performance.now() : 0;
       if (fxState.enabled) this.composer.render();
       else this.renderer.render(this.scene, this.camera);
-      this._updatePerformanceDiagnostics(delta);
+      this._updatePerformanceDiagnostics(
+        frameIntervalMs,
+        updateMs,
+        diagnostics ? performance.now() - renderStartedAt : 0
+      );
     };
 
     animate();

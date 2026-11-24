@@ -1,6 +1,6 @@
 import { fxState } from '../core/FXState.js?v=23';
-import { CurvedBook3D } from './CurvedBook3D.js?v=23';
-import { renderDisplayFormula, renderInlineMathText, renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
+import { CurvedBook3D } from './CurvedBook3D.js?v=24';
+import { renderDisplayFormula, renderInlineMathText, renderMathInElementSafe } from '../core/MathRenderer.js?v=26';
 
 const SOLIDS = [
   { id: 'tetrahedron', greek: 'PYR', name: 'Fire', accent: '#ff5722', secondary: '#fbbf24' },
@@ -12,12 +12,12 @@ const SOLIDS = [
 
 // Chapters in reading order. Spell chapters take their pages from the spell's page control (an option list).
 const CHAPTERS = [
-  { id: 'prologue', letter: 'α', title: 'Prologue' },
-  { id: 'polyhedra', letter: 'Δ', title: 'Polyhedra' },
-  { id: 'golden-ratio', letter: 'φ', title: 'Golden Ratio', spell: 'golden-ratio', pageControl: 'mode' },
-  { id: 'projection', letter: 'π', title: 'Projection', spell: 'projection', pageControl: 'mode' },
-  { id: 'infinity', letter: 'ℵ', title: 'Infinity', spell: 'infinity', pageControl: 'page' },
-  { id: 'non-euclidean', letter: 'κ', title: 'Non-Euclidean', spell: 'non-euclidean' }
+  { id: 'prologue', letter: String.raw`\(\alpha\)`, title: 'Prologue' },
+  { id: 'polyhedra', letter: String.raw`\(\Delta\)`, title: 'Polyhedra' },
+  { id: 'golden-ratio', letter: String.raw`\(\varphi\)`, title: 'Golden Ratio', spell: 'golden-ratio', pageControl: 'mode' },
+  { id: 'projection', letter: String.raw`\(\pi\)`, title: 'Projection', spell: 'projection', pageControl: 'mode' },
+  { id: 'infinity', letter: String.raw`\(\aleph\)`, title: 'Infinity', spell: 'infinity', pageControl: 'page' },
+  { id: 'non-euclidean', letter: String.raw`\(\kappa\)`, title: 'Non-Euclidean', spell: 'non-euclidean' }
 ];
 
 /**
@@ -135,7 +135,7 @@ export class Grimoire {
     const pageIndexEl = left.querySelector('.chapter-page-overline-index');
     pageIndexEl.textContent = 'STUDY';
     page.pageIndexEl = pageIndexEl;
-    left.querySelector('.page-title').textContent = page.label;
+    renderInlineMathText(left.querySelector('.page-title'), page.label);
     renderInlineMathText(left.querySelector('.legend'), page.legend || page.spell.description);
     if (page.formula) {
       const formula = left.querySelector('.concept-formula');
@@ -226,7 +226,13 @@ export class Grimoire {
       b.removeAttribute('title');
       b.setAttribute('aria-label', ch.title);
       b.setAttribute('aria-current', 'false');
-      b.innerHTML = `<span class="tab-orb"><span class="tab-letter">${ch.letter}</span></span>`;
+      const orb = document.createElement('span');
+      orb.className = 'tab-orb';
+      const letter = document.createElement('span');
+      letter.className = 'tab-letter';
+      renderInlineMathText(letter, ch.letter);
+      orb.appendChild(letter);
+      b.appendChild(orb);
       b.addEventListener('click', () => this.goToChapter(ch.id));
       this.chapterRibbons.appendChild(b);
     });
@@ -241,9 +247,16 @@ export class Grimoire {
       b.type = 'button';
       b.className = 'tab page-tab';
       if (p.accent) b.style.setProperty('--accent', p.accent);
-      b.innerHTML = p.sub
-        ? `<span class="tab-letter">${p.sub}</span><span class="tab-name">${p.label}</span>`
-        : `<span class="tab-name">${p.label}</span>`;
+      if (p.sub) {
+        const sub = document.createElement('span');
+        sub.className = 'tab-letter';
+        sub.textContent = p.sub;
+        b.appendChild(sub);
+      }
+      const name = document.createElement('span');
+      name.className = 'tab-name';
+      renderInlineMathText(name, p.label);
+      b.appendChild(name);
       b.addEventListener('click', () => this.goTo(p.flat));
       this.pageRibbons.appendChild(b);
     });
@@ -385,7 +398,7 @@ export class Grimoire {
       const symbol = heading.querySelector('.chapter-heading-symbol');
       const kicker = heading.querySelector('.chapter-heading-kicker');
       const name = heading.querySelector('.chapter-heading-name');
-      if (symbol) symbol.textContent = page.chapter.letter;
+      if (symbol) renderInlineMathText(symbol, page.chapter.letter);
       if (kicker) kicker.textContent = `CHAPTER ${chapterNumber}`;
       if (name) name.textContent = page.chapter.title.toUpperCase();
       heading.dataset.chapter = page.chapter.id;
@@ -452,7 +465,7 @@ export class Grimoire {
     this._deferBookContentsMode = false;
 
     if (animate && chapterChanged) {
-      this.engine.playChapterSignature?.(page.chapter.id, nextTheme.primary);
+      this.engine.playChapterSignature?.(page.chapter.id, nextTheme.primary, nextTheme.secondary);
       this.fantasy.chapterTransition?.(nextTheme, page.chapter.id);
     } else if (this.opened && fxState.enabled) {
       this.fantasy.retrigger(this.leftInner, 'swap');
@@ -537,6 +550,7 @@ export class Grimoire {
     this.rightInner.appendChild(page.right);
     renderMathInElementSafe(page.left);
     renderMathInElementSafe(page.right);
+    this.fantasy.refreshPanelText?.();
 
     const isContents = page.chapter.id === 'prologue';
     this.el.classList.toggle('prologue-reading', isContents);

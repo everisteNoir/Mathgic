@@ -69,7 +69,7 @@ export const DualMorphSpell = {
       max: 1.35,
       step: 0.01,
       default: 0.68,
-      format: (v) => `${Math.round(v * 100)}%`
+      format: (v) => String.raw`\(${Math.round(v * 100)}\%\)`
     }
   ],
 

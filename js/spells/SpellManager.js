@@ -1,3 +1,5 @@
+import { renderInlineMathText } from '../core/MathRenderer.js?v=26';
+
 /**
  * SpellManager.js — Plug-and-Play Mathgic Plugin Manager
  * Manages inscribed spells (which nest inside the transparent Platonic solid)
@@ -115,11 +117,29 @@ export class SpellManager {
     const wrap = document.createElement('div');
     wrap.className = 'page-controls';
     const rows = [];
+    const sections = new Map();
     const ctx = () => (pageCtrlId ? { ...spell.params, [pageCtrlId]: pageValue } : spell.params);
+    const setControlText = (element, text) => renderInlineMathText(element, text);
+    const getSection = (label) => {
+      if (!sections.has(label)) {
+        const section = document.createElement('section');
+        section.className = 'spell-control-section';
+        const heading = document.createElement('h3');
+        heading.className = 'spell-control-section-title';
+        setControlText(heading, label);
+        section.appendChild(heading);
+        sections.set(label, { element: section, rows: [] });
+        wrap.appendChild(section);
+      }
+      return sections.get(label);
+    };
     const refresh = () => {
       rows.forEach((r) => {
         r._sync?.();
         r.style.display = r._ctrl.showWhen && !r._ctrl.showWhen(ctx()) ? 'none' : '';
+      });
+      sections.forEach(({ element, rows: sectionRows }) => {
+        element.style.display = sectionRows.some((row) => row.style.display !== 'none') ? '' : 'none';
       });
     };
 
@@ -129,18 +149,20 @@ export class SpellManager {
       row._ctrl = ctrl;
 
       row.className = 'control-group spell-control-row';
+      const section = ctrl.group ? getSection(ctrl.group) : null;
       if (ctrl.type === 'choice') {
         // Segmented buttons: one option selected at a time
         row.innerHTML = `
-          <div class="control-header"><label>${ctrl.label}</label></div>
+          <div class="control-header"><label></label></div>
           <div class="choice-group"></div>
         `;
+        setControlText(row.querySelector('label'), ctrl.label);
         const group = row.querySelector('.choice-group');
         ctrl.options.forEach((opt) => {
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'choice-btn';
-          btn.textContent = opt.label;
+          setControlText(btn, opt.label);
           btn.addEventListener('click', () => {
             spell.params[ctrl.id] = opt.value;
             spell.onParamChange?.(ctrl.id, opt.value);
@@ -155,14 +177,15 @@ export class SpellManager {
         };
       } else if (ctrl.type === 'action') {
         row.innerHTML = `
-          <div class="control-header"><label>${ctrl.label}</label></div>
+          <div class="control-header"><label></label></div>
           <button type="button" class="action-btn spell-action-btn"></button>
         `;
+        setControlText(row.querySelector('label'), ctrl.label);
         const btn = row.querySelector('button');
         row._sync = () => {
-          btn.textContent = typeof ctrl.buttonLabel === 'function'
+          setControlText(btn, typeof ctrl.buttonLabel === 'function'
             ? ctrl.buttonLabel(spell, ctx())
-            : (ctrl.buttonLabel || 'Activate');
+            : (ctrl.buttonLabel || 'Activate'));
           btn.disabled = typeof ctrl.disabled === 'function' ? !!ctrl.disabled(spell, ctx()) : !!ctrl.disabled;
         };
         btn.addEventListener('click', () => {
@@ -172,9 +195,10 @@ export class SpellManager {
       } else if (ctrl.type === 'toggle') {
         // Single On/Off button
         row.innerHTML = `
-          <div class="control-header"><label>${ctrl.label}</label></div>
+          <div class="control-header"><label></label></div>
           <div class="choice-group"><button type="button" class="choice-btn"></button></div>
         `;
+        setControlText(row.querySelector('label'), ctrl.label);
         const btn = row.querySelector('button');
         row._sync = () => {
           btn.textContent = spell.params[ctrl.id] ? 'On' : 'Off';
@@ -188,30 +212,36 @@ export class SpellManager {
       } else {
         row.innerHTML = `
           <div class="control-header">
-            <label>${ctrl.label}</label>
+            <label></label>
             <span class="control-val"></span>
           </div>
           <input type="range" min="${ctrl.min}" max="${ctrl.max}" step="${ctrl.step}" />
         `;
+        setControlText(row.querySelector('label'), ctrl.label);
         const input = row.querySelector('input');
         const valSpan = row.querySelector('.control-val');
         const fmt = (v) => (ctrl.format ? ctrl.format(v) : v);
         row._sync = () => {
           const v = spell.params[ctrl.id];
           input.value = v;
-          valSpan.textContent = fmt(v);
+          setControlText(valSpan, fmt(v));
           input.style.setProperty('--p', `${((v - ctrl.min) / (ctrl.max - ctrl.min)) * 100}%`);
         };
         input.addEventListener('input', (e) => {
           const val = parseFloat(e.target.value);
           spell.params[ctrl.id] = val;
-          valSpan.textContent = fmt(val);
+          setControlText(valSpan, fmt(val));
           spell.onParamChange?.(ctrl.id, val);
           refresh();
         });
       }
       rows.push(row);
-      wrap.appendChild(row);
+      if (section) {
+        section.rows.push(row);
+        section.element.appendChild(row);
+      } else {
+        wrap.appendChild(row);
+      }
     });
     refresh();
     return { el: wrap, refresh };

@@ -36,12 +36,38 @@ export class HoldFX {
     this.detonationSolid = null;
     this.chargeIntroElapsed = 0;
     this.chargeFadeElapsed = 0;
-    this.chargeIntroDuration = 0.34;
-    this.chargeFadeDuration = 0.22;
+    this.chargeIntroDuration = 0.45;
+    this.chargeFadeDuration = 0.38;
     this.fadeEnergy = 0;
     this._worldPosition = new THREE.Vector3();
     this._worldQuaternion = new THREE.Quaternion();
     this._dummy = new THREE.Object3D();
+    this._handoffPositions = new Float32Array(PARTICLE_COUNT * 3);
+    this._handoffFragmentTransforms = Array.from({ length: FRAGMENT_COUNT }, () => ({
+      position: new THREE.Vector3(),
+      quaternion: new THREE.Quaternion(),
+      scale: new THREE.Vector3()
+    }));
+    this._handoffRingScales = new Float32Array(9);
+    this._handoffRingOpacities = new Float32Array(3);
+    this._handoffTargetPosition = new THREE.Vector3();
+    this._handoffTargetQuaternion = new THREE.Quaternion();
+    this._handoffTargetScale = new THREE.Vector3();
+    this._contactPoint = new THREE.Vector3();
+    this._contactNormal = new THREE.Vector3(0, 0, 1);
+    this._contactPlaneNormal = new THREE.Vector3(0, 0, 1);
+    this._contactQuaternion = new THREE.Quaternion();
+    this._contactAge = 0;
+    this._contactActive = false;
+    this._handoffContactScale = 1;
+    this._handoffContactOpacity = 0;
+    this._handoffShellScale = 1;
+    this._handoffParticleOpacity = 0;
+    this._handoffFragmentOpacity = 0;
+    this._handoffShellOpacity = 0;
+    this._handoffFlash = 0;
+    this._handoffActive = false;
+    this._burstStartRadius = 0;
 
     this.group = new THREE.Group();
     this.group.name = 'ElementalResonance';
@@ -113,6 +139,16 @@ export class HoldFX {
       this.rings.push({ mesh, material: mat, index: i });
     }
 
+    this.contactMaterial = new THREE.MeshBasicMaterial({
+      color: '#ffe08a', transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+      side: THREE.DoubleSide, toneMapped: false
+    });
+    this.contactRing = new THREE.Mesh(ringGeo, this.contactMaterial);
+    this.contactRing.name = 'ChargeContactRing';
+    this.contactRing.visible = false;
+    this.group.add(this.contactRing);
+
     // A small wireframe shell gives the detonation a readable centre, not a
     // full-screen flash. It expands only around the selected solid.
     this.shellGeo = new THREE.IcosahedronGeometry(0.42, 1);
@@ -135,6 +171,34 @@ export class HoldFX {
     this._applyElementStyle(this.solidId);
   }
 
+  setContact(point, normal) {
+    this._contactPoint.copy(point);
+    this._contactNormal.copy(normal).normalize();
+    if (this._contactNormal.lengthSq() < 0.001) this._contactNormal.set(0, 0, 1);
+    this._contactQuaternion.setFromUnitVectors(this._contactPlaneNormal, this._contactNormal);
+    this._contactAge = 0;
+    this._contactActive = true;
+  }
+
+  clearContact() {
+    this._contactActive = false;
+    this.contactRing.visible = false;
+    this.contactMaterial.opacity = 0;
+  }
+
+  _updateContactRing(energy, alpha, elapsed) {
+    if (!this._contactActive) {
+      this.contactRing.visible = false;
+      this.contactMaterial.opacity = 0;
+      return;
+    }
+    this.contactRing.visible = alpha > 0.002;
+    this.contactRing.position.copy(this._contactPoint);
+    this.contactRing.quaternion.copy(this._contactQuaternion);
+    this.contactRing.scale.setScalar(0.12 + energy * 0.3 + Math.sin(elapsed * 10) * 0.015);
+    this.contactMaterial.opacity = alpha * (0.24 + energy * 0.52);
+  }
+
   _applyElementStyle(solidId) {
     const style = ELEMENTS[solidId] || ELEMENTS.tetrahedron;
     this.style = style.style;
@@ -142,6 +206,7 @@ export class HoldFX {
     this.particleMat.color.copy(colors[1]);
     this.fragmentMat.color.copy(colors[2]);
     this.shellMat.color.copy(colors[0]);
+    this.contactMaterial.color.copy(colors[1]);
     this.rings.forEach(({ material }, i) => material.color.copy(colors[i % 3]));
 
     // Distinct wave orientations communicate each element's geometry.
@@ -163,6 +228,11 @@ export class HoldFX {
     this.age = 0;
     this.flash = 0;
     this.releaseEnergy = 0;
+    this._handoffActive = false;
+    this._contactActive = false;
+    this._contactAge = 0;
+    this.contactRing.visible = false;
+    this.contactMaterial.opacity = 0;
     this.chargeIntroElapsed = 0;
     this.chargeFadeElapsed = 0;
     this.fadeEnergy = 0;
@@ -181,9 +251,43 @@ export class HoldFX {
 
   /** Begin a powerful but spatially bounded detonation around the active solid. */
   burst(energy = 1, solidId = this.solidId, solid = null) {
+    this._handoffActive = ['charge-intro', 'charging', 'charge-fade'].includes(this.phase) && this.group.visible;
+    if (this._handoffActive) {
+      this._handoffPositions.set(this.positions);
+      this._handoffParticleOpacity = this.particleMat.opacity;
+      this._handoffFragmentOpacity = this.fragmentMat.opacity;
+      this._handoffShellOpacity = this.shellMat.opacity;
+      this._handoffShellScale = this.shell.scale.x;
+      this._handoffFlash = this.flash;
+      this._handoffContactScale = this.contactRing.scale.x;
+      this._handoffContactOpacity = this.contactMaterial.opacity;
+      for (let i = 0; i < this.rings.length; i++) {
+        const { mesh, material } = this.rings[i];
+        const offset = i * 3;
+        this._handoffRingScales[offset] = mesh.scale.x;
+        this._handoffRingScales[offset + 1] = mesh.scale.y;
+        this._handoffRingScales[offset + 2] = mesh.scale.z;
+        this._handoffRingOpacities[i] = material.opacity;
+      }
+      for (let i = 0; i < FRAGMENT_COUNT; i++) {
+        this.fragments.getMatrixAt(i, this._dummy.matrix);
+        this._dummy.matrix.decompose(
+          this._handoffFragmentTransforms[i].position,
+          this._handoffFragmentTransforms[i].quaternion,
+          this._handoffFragmentTransforms[i].scale
+        );
+      }
+    } else {
+      this._handoffParticleOpacity = 0;
+      this._handoffFragmentOpacity = 0;
+      this._handoffShellOpacity = 0;
+      this._handoffFlash = 0;
+      this._handoffContactOpacity = 0;
+    }
     if (solidId !== this.solidId && ELEMENTS[solidId]) this.solidId = solidId;
     this.style = ELEMENTS[this.solidId]?.style || 'fire';
     this.releaseEnergy = THREE.MathUtils.clamp(energy, 0, 1);
+    this._burstStartRadius = this._handoffActive ? 1.72 - this.releaseEnergy * 0.98 : 0;
     this.age = 0;
     this.duration = ELEMENTS[this.solidId]?.burstDuration || 1.72;
     this.phase = 'detonating';
@@ -191,16 +295,18 @@ export class HoldFX {
     this.chargeFadeElapsed = 0;
     this.detonationSolid = solid;
     this.detonationSolid?.beginDetonation?.();
-    this.flash = 0.75 * this.releaseEnergy;
+    if (!this._handoffActive) this.flash = 0;
     this.group.visible = true;
     this.particles.visible = true;
     this.fragments.visible = true;
     this.shell.visible = true;
     this.rings.forEach(({ mesh }) => { mesh.visible = true; });
-    this.particleMat.opacity = 0.9 * this.releaseEnergy;
-    this.fragmentMat.opacity = 0.92 * this.releaseEnergy;
-    this.shellMat.opacity = 0.75 * this.releaseEnergy;
-    this.rings.forEach(({ material }) => { material.opacity = 0.72 * this.releaseEnergy; });
+    if (!this._handoffActive) {
+      this.particleMat.opacity = 0;
+      this.fragmentMat.opacity = 0;
+      this.shellMat.opacity = 0;
+      this.rings.forEach(({ material }) => { material.opacity = 0; });
+    }
   }
 
   _updateCharge(dt, energy, elapsed, introAlpha = 1) {
@@ -256,13 +362,17 @@ export class HoldFX {
     this.particleMat.size = (0.032 + energy * 0.035) * (0.72 + introAlpha * 0.28);
 
     const ringEnergy = (0.12 + energy * 0.58) * introAlpha;
+    const chargeProgress = smooth01(energy);
+    const ready = smooth01(THREE.MathUtils.clamp((energy - 0.82) / 0.18, 0, 1));
     for (let index = 0; index < this.rings.length; index++) {
       const { mesh, material } = this.rings[index];
       mesh.visible = introAlpha > 0.002;
-      const pulse = (0.38 + introAlpha * 0.62) * (1 + energy * (this.style === 'earth' ? 0.05 : 0.13) + index * 0.035);
-      mesh.scale.setScalar(pulse);
+      const pulse = 1 + ready * (0.035 + 0.025 * Math.sin(elapsed * 14 + index));
+      const chargeRadius = 1.12 - chargeProgress * 0.3;
+      mesh.scale.setScalar(chargeRadius * (1 + index * 0.08) * pulse);
       mesh.rotation.z += dt * (0.18 + energy * 0.5) * (index % 2 ? -1 : 1);
-      material.opacity = ringEnergy * (1 - index * 0.17);
+      material.opacity = ringEnergy * (1 - index * 0.17)
+        * (1 + ready * (0.12 + 0.08 * Math.sin(elapsed * 14 + index)));
     }
     this.fragmentMat.opacity = energy * 0.46 * introAlpha;
     // Let the fragment pool follow the same intro envelope as particles and rings;
@@ -272,8 +382,9 @@ export class HoldFX {
     this.shell.visible = introAlpha > 0.002;
     this.shell.scale.setScalar((0.12 + introAlpha * 0.88) * (0.42 + energy * (this.style === 'earth' ? 0.28 : 0.45)));
     this.shellMat.opacity = energy * 0.5 * introAlpha;
-    const targetFlash = energy * 0.2 * introAlpha;
+    const targetFlash = energy * 0.2 * introAlpha + ready * (0.04 + 0.03 * Math.sin(elapsed * 14));
     this.flash += (targetFlash - this.flash) * Math.min(1, dt * 12);
+    this._updateContactRing(energy, introAlpha, elapsed);
   }
 
   _updateFragmentsCharge(energy, elapsed, introAlpha = 1) {
@@ -295,11 +406,14 @@ export class HoldFX {
     this.age = Math.min(this.duration, this.age + dt);
     const t = THREE.MathUtils.clamp(this.age / this.duration, 0, 1);
     const eased = easeOutCubic(t);
-    const fade = 1 - smooth01(THREE.MathUtils.clamp((t - 0.58) / 0.42, 0, 1));
     const style = this.style;
     const energy = this.releaseEnergy;
+    const intro = smooth01(THREE.MathUtils.clamp(t / 0.16, 0, 1));
+    const handoff = this._handoffActive ? smooth01(THREE.MathUtils.clamp(this.age / 0.18, 0, 1)) : 1;
+    const fade = intro * (1 - smooth01(THREE.MathUtils.clamp((t - 0.58) / 0.42, 0, 1)));
     this.detonationSolid?.setDetonation?.(t, style);
-    const radial = style === 'air' ? 3.0 * t : style === 'earth' ? 2.25 * eased : style === 'water' ? 2.6 * eased : 2.85 * eased;
+    const radialEnd = style === 'air' ? 3.0 : style === 'earth' ? 2.25 : style === 'water' ? 2.6 : 2.85;
+    const radial = this._burstStartRadius + (radialEnd - this._burstStartRadius) * eased;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const s = this.seeds[i];
@@ -316,7 +430,7 @@ export class HoldFX {
         z = (s.x * Math.sin(orbit) + s.z * Math.cos(orbit)) * rr;
         y += phase * (0.44 + s.phase * 0.3) - 0.12 * phase * phase;
       } else if (style === 'earth') {
-        y = s.y * rr - 1.38 * phase * phase;
+        y = s.y * rr;
         x *= 0.92 + 0.08 * Math.cos(phase * TAU + i);
         z *= 0.92 + 0.08 * Math.sin(phase * TAU + i);
       } else if (style === 'air') {
@@ -341,13 +455,22 @@ export class HoldFX {
       this.positions[o + 1] = y;
       this.positions[o + 2] = z;
     }
+    const burstParticleOpacity = energy * 0.96 * fade;
+    if (this._handoffActive) {
+      for (let i = 0; i < this.positions.length; i++) {
+        this.positions[i] = THREE.MathUtils.lerp(this._handoffPositions[i], this.positions[i], handoff);
+      }
+      this.particleMat.opacity =
+        this._handoffParticleOpacity * (1 - handoff) + burstParticleOpacity * handoff;
+    } else {
+      this.particleMat.opacity = burstParticleOpacity;
+    }
     this.particles.geometry.attributes.position.needsUpdate = true;
-    this.particleMat.opacity = energy * 0.96 * fade;
     this.particleMat.size = (style === 'water' ? 0.068 : 0.058) * (0.9 + 0.2 * energy);
 
     // Distinct debris trajectories: shards, crystal splinters, air fragments,
     // water droplets and constellation nodes all reuse the same instanced pool.
-    const fragmentFade = 1 - smooth01(THREE.MathUtils.clamp((t - 0.52) / 0.48, 0, 1));
+    const fragmentFade = intro * (1 - smooth01(THREE.MathUtils.clamp((t - 0.52) / 0.48, 0, 1)));
     for (let i = 0; i < FRAGMENT_COUNT; i++) {
       const s = this.seeds[(i * 4) % PARTICLE_COUNT];
       const delay = s.delay * 0.12;
@@ -355,7 +478,7 @@ export class HoldFX {
       const dist = (style === 'earth' ? 1.7 : style === 'air' ? 1.0 : 1.25) * easeOutCubic(p);
       let px = s.x * dist, py = s.y * dist, pz = s.z * dist;
       if (style === 'fire') { py += p * 0.48 - p * p * 0.2; }
-      else if (style === 'earth') { py -= p * p * 1.42; }
+      else if (style === 'earth') { py += Math.sin(p * TAU + s.phase) * 0.08; }
       else if (style === 'air') {
         const a = p * 4.8;
         const c = Math.cos(a), sn = Math.sin(a);
@@ -367,11 +490,23 @@ export class HoldFX {
       this._dummy.rotation.set(p * (1.8 + i * 0.1), p * (2.2 + i * 0.08), p * 1.4);
       const baseSize = style === 'earth' ? 0.19 : style === 'aether' ? 0.14 : 0.12;
       this._dummy.scale.setScalar(Math.max(0.0001, baseSize * energy * fragmentFade * (0.72 + s.speed * 0.28)));
+      if (this._handoffActive) {
+        const start = this._handoffFragmentTransforms[i];
+        this._handoffTargetPosition.copy(this._dummy.position);
+        this._handoffTargetQuaternion.copy(this._dummy.quaternion);
+        this._handoffTargetScale.copy(this._dummy.scale);
+        this._dummy.position.lerpVectors(start.position, this._handoffTargetPosition, handoff);
+        this._dummy.quaternion.copy(start.quaternion).slerp(this._handoffTargetQuaternion, handoff);
+        this._dummy.scale.lerpVectors(start.scale, this._handoffTargetScale, handoff);
+      }
       this._dummy.updateMatrix();
       this.fragments.setMatrixAt(i, this._dummy.matrix);
     }
     this.fragments.instanceMatrix.needsUpdate = true;
-    this.fragmentMat.opacity = energy * 0.92 * fragmentFade;
+    const burstFragmentOpacity = energy * 0.92 * fragmentFade;
+    this.fragmentMat.opacity = this._handoffActive
+      ? this._handoffFragmentOpacity * (1 - handoff) + burstFragmentOpacity * handoff
+      : burstFragmentOpacity;
 
     // Element signatures: the same three pooled fronts use different planes,
     // aspect ratios and rotation profiles, avoiding expensive per-burst geometry.
@@ -386,17 +521,57 @@ export class HoldFX {
       else if (style === 'water') { sy *= 0.42; sx *= 1.12; }
       else if (style === 'aether') { sx *= 0.96 + k * 0.04; sy *= 1.02 + k * 0.08; mesh.rotation.z += dt * (index % 2 ? -0.8 : 0.8); }
       else { sy *= 0.76 + 0.12 * k; mesh.rotation.x += dt * (0.5 + k * 0.18); }
-      mesh.scale.set(sx, sy, sz);
-      material.opacity = energy * 0.82 * fade * (1 - index * 0.18);
+      const targetScaleX = sx * intro;
+      const targetScaleY = sy * intro;
+      const targetScaleZ = sz * intro;
+      if (this._handoffActive) {
+        const offset = index * 3;
+        mesh.scale.set(
+          THREE.MathUtils.lerp(this._handoffRingScales[offset], targetScaleX, handoff),
+          THREE.MathUtils.lerp(this._handoffRingScales[offset + 1], targetScaleY, handoff),
+          THREE.MathUtils.lerp(this._handoffRingScales[offset + 2], targetScaleZ, handoff)
+        );
+      } else {
+        mesh.scale.set(targetScaleX, targetScaleY, targetScaleZ);
+      }
+      const targetOpacity = energy * 0.82 * fade * (1 - index * 0.18);
+      material.opacity = this._handoffActive
+        ? this._handoffRingOpacities[index] * (1 - handoff) + targetOpacity * handoff
+        : targetOpacity;
       mesh.visible = material.opacity > 0.005;
     }
 
     const shellScale = style === 'earth' ? 0.4 + t * 1.65 : style === 'air' ? 0.3 + t * 2.1 : 0.35 + t * 1.85;
-    this.shell.scale.setScalar(shellScale);
+    const targetShellScale = shellScale * intro;
+    this.shell.scale.setScalar(this._handoffActive
+      ? THREE.MathUtils.lerp(this._handoffShellScale, targetShellScale, handoff)
+      : targetShellScale);
     this.shell.rotation.set(t * 0.8, t * (style === 'aether' ? 2.8 : 1.1), t * 0.45);
-    this.shellMat.opacity = energy * 0.48 * fade;
-    this.flash = Math.max(0, energy * 0.78 * (1 - t) * (style === 'fire' ? 1.0 : 0.72));
+    const targetShellOpacity = energy * 0.48 * fade;
+    this.shellMat.opacity = this._handoffActive
+      ? this._handoffShellOpacity * (1 - handoff) + targetShellOpacity * handoff
+      : targetShellOpacity;
+    if (this._handoffActive && this._handoffContactOpacity > 0.002) {
+      this.contactRing.visible = true;
+      this.contactRing.position.copy(this._contactPoint);
+      this.contactRing.quaternion.copy(this._contactQuaternion);
+      this.contactRing.scale.setScalar(this._handoffContactScale * (1 + handoff * 0.8));
+      this.contactMaterial.opacity = this._handoffContactOpacity * (1 - handoff);
+    } else {
+      this.contactRing.visible = false;
+      this.contactMaterial.opacity = 0;
+    }
+    const detonationFlash = Math.max(0, energy * 0.78 * (1 - t) * intro * (style === 'fire' ? 1.0 : 0.72));
+    this.flash = this._handoffActive
+      ? this._handoffFlash * (1 - handoff) + detonationFlash * handoff
+      : detonationFlash;
 
+    if (handoff >= 1) {
+      this._handoffActive = false;
+      this._contactActive = false;
+      this.contactRing.visible = false;
+      this.contactMaterial.opacity = 0;
+    }
     if (t >= 1) this.reset();
   }
 
@@ -423,6 +598,7 @@ export class HoldFX {
     }
 
     if (energy > 0.015) {
+      this._contactAge = 0;
       if (this.phase !== 'charge-intro' && this.phase !== 'charging') {
         this.phase = 'charge-intro';
         this.chargeIntroElapsed = 0;
@@ -434,6 +610,7 @@ export class HoldFX {
         this.rings.forEach(({ mesh }) => { mesh.visible = true; });
       }
       this.chargeIntroElapsed = Math.min(this.chargeIntroDuration, this.chargeIntroElapsed + dt);
+      this._contactAge = 0;
       const introT = THREE.MathUtils.clamp(this.chargeIntroElapsed / this.chargeIntroDuration, 0, 1);
       const introAlpha = smooth01(introT);
       if (introT >= 1) this.phase = 'charging';
@@ -457,6 +634,17 @@ export class HoldFX {
       return;
     }
 
+    if (this._contactActive && this.phase === 'idle') {
+      this._contactAge += dt;
+      const contactFade = 1 - smooth01(THREE.MathUtils.clamp(this._contactAge / 0.16, 0, 1));
+      if (contactFade > 0.002) {
+        this.group.visible = true;
+        this._updateContactRing(0, contactFade, elapsed);
+        return;
+      }
+      this.clearContact();
+    }
+
     this.group.visible = false;
     this.phase = 'idle';
     this.energy = 0;
@@ -474,6 +662,7 @@ export class HoldFX {
     this.fragmentMat.dispose();
     this.rings.forEach(({ material }) => material.dispose());
     this.rings[0]?.mesh.geometry.dispose();
+    this.contactMaterial.dispose();
     this.shellGeo.dispose();
     this.shellMat.dispose();
   }

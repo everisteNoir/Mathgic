@@ -15,6 +15,7 @@
   --grimoire-secondary: #38bdf8;
   --font-display: 'Cinzel', Georgia, serif;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Cormorant Garamond', Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
   --ease-magic: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
@@ -3269,6 +3270,161 @@ body.focus-mode .floating-mathgic-title {
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+/* Knowledge is suspended from the book's gutter, not boxed into cards. */
+.floating-panel::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 14%;
+  bottom: 10%;
+  width: 240px;
+  opacity: .38;
+  filter: blur(26px);
+  animation: knowledgeGlow 7s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.floating-left::after {
+  right: -154px;
+  background: radial-gradient(ellipse at right center, color-mix(in srgb, var(--grimoire-accent) 22%, transparent), transparent 70%);
+}
+.floating-right::after {
+  left: -154px;
+  background: radial-gradient(ellipse at left center, color-mix(in srgb, var(--grimoire-secondary) 21%, transparent), transparent 70%);
+}
+.floating-panel .panel-content-viewport { scrollbar-width: none; }
+.floating-panel .panel-content-viewport::-webkit-scrollbar { display: none; }
+@keyframes knowledgeGlow {
+  from { opacity: .26; scale: .96 1; }
+  to { opacity: .46; scale: 1.04 1; }
+}
+.floating-panel .page-inner {
+  position: relative;
+}
+.floating-panel .page-inner::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -8%;
+  bottom: -8%;
+  width: 64px;
+  opacity: 0;
+  filter: blur(16px);
+  pointer-events: none;
+}
+.floating-left .page-inner::before {
+  right: -38px;
+  background: radial-gradient(ellipse at right center, color-mix(in srgb, var(--grimoire-accent) 32%, transparent), transparent 72%);
+}
+.floating-right .page-inner::before {
+  left: -38px;
+  background: radial-gradient(ellipse at left center, color-mix(in srgb, var(--grimoire-secondary) 30%, transparent), transparent 72%);
+}
+.floating-panel .page-inner.content-enter::before {
+  animation: knowledgeEmanation .72s var(--ease-magic) both;
+}
+@keyframes knowledgeEmanation {
+  0% { opacity: 0; scale: .58 1; }
+  32% { opacity: .8; }
+  100% { opacity: 0; scale: 1.16 1; }
+}
+
+/* Remove the remaining separators and surfaces from the side annotations. */
+#grimoire:not(.prologue-reading) .floating-panel .chapter-page-overline,
+#grimoire:not(.prologue-reading) .floating-panel .concept-formula,
+#grimoire:not(.prologue-reading) .floating-panel .concept-note,
+#grimoire:not(.prologue-reading) .floating-panel .spell-live-readout,
+#grimoire:not(.prologue-reading) .floating-panel .chapter-metric-block,
+#grimoire:not(.prologue-reading) .floating-panel .face-shape-note,
+#grimoire:not(.prologue-reading) .floating-panel .spell-control-section,
+#grimoire:not(.prologue-reading) .floating-panel .control-group,
+#grimoire:not(.prologue-reading) .floating-panel .spell-control-row,
+#grimoire:not(.prologue-reading) .floating-panel .action-btn,
+#grimoire:not(.prologue-reading) .floating-panel .choice-btn {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#grimoire:not(.prologue-reading) .floating-panel .concept-formula {
+  padding: 5px 0;
+}
+#grimoire:not(.prologue-reading) .floating-panel .concept-note {
+  padding-left: 0;
+}
+#grimoire:not(.prologue-reading) .floating-panel .spell-live-readout {
+  padding: 8px 0 0;
+}
+#grimoire:not(.prologue-reading) .floating-panel .chapter-metric-block {
+  padding-top: 8px;
+}
+#grimoire:not(.prologue-reading) .floating-panel .face-shape-note {
+  padding-top: 5px;
+}
+#grimoire:not(.prologue-reading) .floating-panel .spell-control-section {
+  padding-left: 0;
+}
+#grimoire:not(.prologue-reading) .floating-panel .control-group,
+#grimoire:not(.prologue-reading) .floating-panel .spell-control-row {
+  padding-inline: 0;
+}
+#grimoire:not(.prologue-reading) .floating-panel .action-btn,
+#grimoire:not(.prologue-reading) .floating-panel .choice-btn {
+  padding-inline: 0;
+  color: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 78%, white);
+}
+#grimoire:not(.prologue-reading) .floating-panel .action-btn:hover,
+#grimoire:not(.prologue-reading) .floating-panel .choice-btn:hover,
+#grimoire:not(.prologue-reading) .floating-panel .choice-btn.active {
+  color: #fff4d2;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 42%, transparent);
+}
+#grimoire:not(.prologue-reading) .floating-panel .chapter-page .legend,
+#grimoire:not(.prologue-reading) .floating-panel .concept-note,
+#grimoire:not(.prologue-reading) .floating-panel .spell-live-readout,
+#grimoire:not(.prologue-reading) .floating-panel .face-shape-note {
+  font-family: var(--font-body);
+}
+#grimoire:not(.prologue-reading) .floating-panel .katex {
+  font-family: KaTeX_Main, "Times New Roman", serif;
+}
+
+body.fx-off .floating-panel::after,
+body.fx-off .floating-panel .page-inner.content-enter::before {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .floating-panel::after,
+  .floating-panel .page-inner.content-enter::before {
+    animation: none !important;
+  }
+}
+
+#grimoire.open:not(.prologue-reading) .floating-panel .glyph-heading .floating-glyph.glyph-in-view,
+#grimoire.open:not(.prologue-reading) .floating-panel .glyph-heading .floating-math-unit.glyph-in-view {
+  display: inline-block;
+}
+#grimoire.open:not(.prologue-reading) .floating-panel .glyph-heading .floating-glyph.glyph-in-view.glyph-animate,
+#grimoire.open:not(.prologue-reading) .floating-panel .glyph-heading .floating-math-unit.glyph-in-view.glyph-animate {
+  animation: floatingGlyphBob 2.6s ease-in-out 1;
+  animation-delay: calc(var(--glyph-phase, 0) * 0.018s);
+}
+#grimoire.open .floating-panel .floating-word { white-space: nowrap; }
+@keyframes floatingGlyphBob {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -1px, 0); }
+}
+body.fx-off #grimoire .floating-panel .floating-glyph,
+body.fx-off #grimoire .floating-panel .floating-math-unit {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #grimoire .floating-panel .floating-glyph.glyph-in-view,
+  #grimoire .floating-panel .floating-math-unit.glyph-in-view {
+    animation: none !important;
+  }
+}
+
 .grimoire.open .book-cover {
   opacity: 0 !important;
   visibility: hidden !important;
@@ -3884,4 +4040,243 @@ body.focus-mode .floating-mathgic-title {
     font-size: .56rem;
     letter-spacing: .13em;
   }
+}
+
+/* Sealed wordmark — center the mark at 75% of the cover height from its base. */
+body:not(.book-is-open) .floating-mathgic-title {
+  --sealed-book-stage-height: min(58vh, 640px);
+  --sealed-book-stage-bottom: 5vh;
+  --sealed-book-quarter: min(14.5vh, 160px);
+  position: fixed !important;
+  top: calc(100vh - var(--sealed-book-stage-height) - var(--sealed-book-stage-bottom) + var(--sealed-book-quarter)) !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  display: inline-block !important;
+  width: auto !important;
+  max-width: calc(100vw - 32px) !important;
+  height: auto !important;
+  overflow: visible !important;
+  padding: 0 0 0 .22em !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: translate3d(-50%, -50%, 0) !important;
+  color: #f0d99c !important;
+  font-family: var(--font-display) !important;
+  font-size: clamp(1.8rem, 3.8vw, 2.5rem) !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  letter-spacing: .22em !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+  text-shadow: 0 0 10px rgba(242, 195, 108, .34), 0 2px 4px rgba(0, 0, 0, .8) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  isolation: isolate;
+  transition:
+    top 950ms cubic-bezier(.2,.78,.2,1),
+    left 950ms cubic-bezier(.2,.78,.2,1),
+    transform 950ms cubic-bezier(.2,.78,.2,1),
+    font-size 950ms cubic-bezier(.2,.78,.2,1),
+    letter-spacing 950ms cubic-bezier(.2,.78,.2,1),
+    color 260ms ease,
+    text-shadow 260ms ease !important;
+}
+.wordmark-label {
+  position: relative;
+  z-index: 1;
+  display: block;
+  color: #f0d99c;
+}
+.wordmark-sigil {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: clamp(280px, 42vw, 460px);
+  height: auto;
+  overflow: visible;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  color: #e6c77e;
+  opacity: .82;
+  transition: opacity 450ms ease, transform 700ms var(--ease-magic);
+}
+.wordmark-sigil .sigil-orbit,
+.wordmark-sigil .sigil-compass-axis,
+.wordmark-sigil .sigil-medallion {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.wordmark-sigil .sigil-orbit {
+  stroke: #d7ba77;
+  stroke-width: 1.2;
+  opacity: .82;
+  stroke-dasharray: 1100;
+  stroke-dashoffset: 1100;
+  animation: sigil-line-draw 2.1s ease-out .15s forwards;
+  filter: drop-shadow(0 0 2px rgba(231, 199, 126, .55));
+}
+.wordmark-sigil .sigil-compass-axis {
+  stroke: #a9d8dc;
+  stroke-width: .9;
+  opacity: .72;
+  stroke-dasharray: 70;
+  stroke-dashoffset: 70;
+  animation: sigil-line-draw 1.1s ease-out .55s forwards;
+}
+.wordmark-sigil .sigil-medallion {
+  stroke: #f2d896;
+  stroke-width: 1.3;
+  opacity: .95;
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  animation: sigil-line-draw 1.2s ease-out .9s forwards;
+  filter: drop-shadow(0 0 3px rgba(255, 227, 159, .68));
+}
+.wordmark-sigil .sigil-node {
+  fill: #f7e6b7;
+  opacity: 0;
+  filter: drop-shadow(0 0 4px rgba(255, 227, 159, .9));
+  animation: sigil-node-appear 450ms ease-out 1.45s forwards;
+}
+.wordmark-sigil .sigil-orbiting-light {
+  fill: #d9f4f4;
+  filter: drop-shadow(0 0 5px rgba(178, 232, 241, .95));
+}
+.floating-mathgic-title:hover,
+.floating-mathgic-title:focus-visible {
+  color: #fff0c8 !important;
+  text-shadow: 0 0 14px rgba(242, 195, 108, .62), 0 2px 4px rgba(0, 0, 0, .8) !important;
+}
+.floating-mathgic-title:hover .wordmark-label,
+.floating-mathgic-title:focus-visible .wordmark-label {
+  color: #fff0c8;
+}
+.floating-mathgic-title:hover .wordmark-sigil,
+.floating-mathgic-title:focus-visible .wordmark-sigil {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.035);
+}
+body.book-is-open .wordmark-sigil {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 450ms ease, visibility 0s linear 450ms, transform 700ms var(--ease-magic);
+  animation: none;
+}
+body.book-is-open .wordmark-sigil * {
+  animation: none !important;
+  stroke-dashoffset: 0;
+}
+@keyframes sigil-line-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes sigil-node-appear {
+  to { opacity: .9; }
+}
+body.fx-off:not(.book-is-open) .wordmark-sigil * {
+  animation: none !important;
+  stroke-dashoffset: 0;
+}
+body.fx-off:not(.book-is-open) .wordmark-sigil .sigil-node {
+  opacity: .9;
+}
+body.fx-off:not(.book-is-open) .wordmark-sigil .sigil-orbiting-light,
+body.book-is-open .wordmark-sigil .sigil-orbiting-light {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-sigil * {
+    animation: none !important;
+    stroke-dashoffset: 0;
+  }
+  .wordmark-sigil .sigil-node { opacity: .9; }
+  .wordmark-sigil .sigil-orbiting-light { display: none; }
+}
+@media (max-width: 860px) {
+  body:not(.book-is-open) .floating-mathgic-title {
+    font-size: clamp(1.65rem, 4.6vw, 2.05rem) !important;
+  }
+}
+@media (max-width: 560px) {
+  body:not(.book-is-open) .floating-mathgic-title {
+    --sealed-book-stage-height: min(54vh, 640px);
+    --sealed-book-stage-bottom: 6vh;
+    --sealed-book-quarter: min(13.5vh, 160px);
+    font-size: clamp(1.5rem, 6.5vw, 1.9rem) !important;
+    letter-spacing: .18em !important;
+    padding-left: .18em !important;
+  }
+  .wordmark-sigil { width: min(94vw, 360px); }
+}
+
+/* A shared, theme-tinted arrival cue ties chapter changes together. */
+#grimoire.chapter-arrival .chapter-page-overline-label {
+  animation: chapterKickerGlow 1.05s var(--ease-magic) both;
+}
+#grimoire.chapter-arrival .chapter-page .page-title {
+  animation: chapterTitleGlow 1.1s var(--ease-magic) both;
+}
+#grimoire.chapter-arrival .spell-live-readout {
+  animation: chapterReadoutGlow 1.2s var(--ease-magic) both;
+}
+@keyframes chapterKickerGlow {
+  0% { color: rgba(232, 226, 213, .48); text-shadow: none; }
+  42% { color: var(--chapter-accent, var(--grimoire-accent)); text-shadow: 0 0 14px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 52%, transparent); }
+  100% { color: inherit; text-shadow: none; }
+}
+@keyframes chapterTitleGlow {
+  0% { text-shadow: 0 0 0 transparent; filter: blur(1.2px); }
+  38% { text-shadow: 0 0 20px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 45%, transparent); filter: blur(0); }
+  100% { text-shadow: 0 0 0 transparent; filter: none; }
+}
+@keyframes chapterReadoutGlow {
+  0% { opacity: .68; box-shadow: inset 0 0 0 1px transparent; }
+  38% { opacity: 1; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 38%, transparent); }
+  100% { opacity: 1; box-shadow: inset 0 0 0 1px transparent; }
+}
+
+/* Projection controls follow the three mathematical stages instead of one long list. */
+#grimoire .chapter-projection .spell-control-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 0 0 10px;
+  border-left: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 34%, transparent);
+}
+#grimoire .chapter-projection .spell-control-section-title {
+  margin: 0 0 2px;
+  color: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 76%, white);
+  font: 600 .52rem/1.35 var(--font-mono);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+#grimoire .chapter-projection .spell-live-readout {
+  margin-top: 12px;
+  padding: 9px 10px;
+  border-left: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 62%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 8%, transparent), transparent 86%);
+  color: rgba(220, 232, 246, .78);
+}
+body.fx-off #grimoire.chapter-arrival .chapter-page-overline-label,
+body.fx-off #grimoire.chapter-arrival .chapter-page .page-title,
+body.fx-off #grimoire.chapter-arrival .spell-live-readout {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #grimoire.chapter-arrival .chapter-page-overline-label,
+  #grimoire.chapter-arrival .chapter-page .page-title,
+  #grimoire.chapter-arrival .spell-live-readout {
+    animation: none !important;
+  }
+}
+body.focus-mode .floating-mathgic-title {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }

@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
+import { fxState } from '../core/FXState.js?v=23';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=26';
+
+const shouldAnimateIntro = () =>
+  fxState.enabled && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 const material = (color, opacity = 0.9, size = 0.06) => new THREE.PointsMaterial({
   color,
@@ -100,36 +104,36 @@ export const InfinitySpell = {
     {
       id: 'page', type: 'choice', label: 'Study', default: 'aleph0',
       options: [
-        { value: 'aleph0', label: 'ℵ₀ — Countable', formula: '|ℕ| = |ℤ| = |ℚ| = ℵ₀', legend: 'A countably infinite set can be listed in a sequence. Explore the integer zigzag, enumerate reduced rational fractions by diagonals, and move every guest in Hilbert’s Hotel from room n to room n + 1.', note: 'Convention: this illustration uses ℕ₀ = {0,1,2,…}. The rational lattice keeps q > 0 and gcd(|p|, q) = 1 so each rational appears only once.' },
-        { value: 'diagonal', label: 'Diagonal', formula: '2^ℵ₀ > ℵ₀', legend: 'Assume a list of infinite binary sequences. Flip the i-th bit of row i to create a new sequence. It differs from every listed row in at least one position, so the list cannot be complete.', note: 'Only a finite prefix is drawn on screen; the proof concerns infinitely many bits. Binary sequences have cardinality 2^ℵ₀; the correspondence with reals requires care because some reals have two binary expansions.' },
-        { value: 'power', label: 'Power Set', formula: '|𝒫(A)| = 2^|A| > |A|', legend: 'Every subset of A is a vertex of 𝒫(A). For a finite n-element set, the n-cube has 2ⁿ vertices. A diagonal subset D = {a ∈ A : a ∉ f(a)} is not in the image of any proposed map f: A → 𝒫(A).', note: 'Edges join subsets that differ by one element. The finite n-cube links to Projection; the diagonal proof itself works for every set A, finite or infinite.' },
-        { value: 'ladder', label: 'Aleph Ladder', formula: 'ℵ₀ < ℵ₁ < ℵ₂ < ⋯', legend: 'Each successor aleph is the least cardinal strictly larger than the preceding cardinal. Choose k = 0,…,5 to ascend through a displayed segment of the hierarchy.', note: 'Continuum Hypothesis: 2^ℵ₀ = ℵ₁? Assuming ZFC is consistent, neither this statement nor its negation is provable from ZFC (Gödel and Cohen). Particle density is metaphorical, not a cardinality scale.' }
+        { value: 'aleph0', label: String.raw`\(\aleph_0\) — Countable`, formula: String.raw`\lvert\mathbb{N}\rvert=\lvert\mathbb{Z}\rvert=\lvert\mathbb{Q}\rvert=\aleph_0`, legend: String.raw`A countably infinite set can be listed in a sequence. Explore the integer zigzag, enumerate reduced rational fractions by diagonals, and move every guest in Hilbert’s Hotel from \(n\) to \(n+1\).`, note: String.raw`Convention: this illustration uses \(\mathbb{N}_0=\{0,1,2,\ldots\}\). The rational lattice keeps \(q>0\) and \(\gcd(\lvert p\rvert,q)=1\), so each rational appears only once.` },
+        { value: 'diagonal', label: 'Diagonal', formula: String.raw`2^{\aleph_0}>\aleph_0`, legend: String.raw`Assume a list of infinite binary sequences. Flip the \(i\)-th bit of row \(i\) to create a new sequence. It differs from every listed row in at least one position, so the list cannot be complete.`, note: String.raw`Only a finite prefix is drawn on screen; the proof concerns infinitely many bits. Binary sequences have cardinality \(2^{\aleph_0}\); the correspondence with reals requires care because some reals have two binary expansions.` },
+        { value: 'power', label: 'Power Set', formula: String.raw`\lvert\mathcal{P}(A)\rvert=2^{\lvert A\rvert}>\lvert A\rvert`, legend: String.raw`Every subset of \(A\) is a vertex of \(\mathcal{P}(A)\). For a finite \(n\)-element set, the \(n\)-cube has \(2^n\) vertices. A diagonal subset \(D=\{a\in A:a\notin f(a)\}\) is not in the image of any proposed map \(f:A\to\mathcal{P}(A)\).`, note: String.raw`Edges join subsets that differ by one element. The finite \(n\)-cube links to Projection; the diagonal proof itself works for every set \(A\), finite or infinite.` },
+        { value: 'ladder', label: 'Aleph Ladder', formula: String.raw`\aleph_0<\aleph_1<\aleph_2<\cdots`, legend: String.raw`Each successor aleph is the least cardinal strictly larger than the preceding cardinal. Choose \(k=0,\ldots,5\) to ascend through a displayed segment of the hierarchy.`, note: String.raw`Continuum Hypothesis: \(2^{\aleph_0}=\aleph_1\)? Assuming ZFC is consistent, neither this statement nor its negation is provable from ZFC (Gödel and Cohen). Particle density is metaphorical, not a cardinality scale.` }
       ]
     },
     {
       id: 'model', type: 'choice', label: 'Countable model', default: 'integers',
       options: [
-        { value: 'integers', label: 'ℤ zigzag' },
-        { value: 'rationals', label: 'ℚ lattice' },
+        { value: 'integers', label: String.raw`\(\mathbb{Z}\) zigzag` },
+        { value: 'rationals', label: String.raw`\(\mathbb{Q}\) lattice` },
         { value: 'hotel', label: 'Hilbert Hotel' }
       ],
       showWhen: (p) => p.page === 'aleph0'
     },
     {
-      id: 'hotelShift', type: 'action', label: 'Hilbert Hotel', buttonLabel: (spell) => spell.hotelShifted ? 'Reset the hotel arrangement' : 'Move every guest to n + 1',
+      id: 'hotelShift', type: 'action', label: 'Hilbert Hotel', buttonLabel: (spell) => spell.hotelShifted ? 'Reset the hotel arrangement' : String.raw`Move every guest to \(n+1\)`,
       showWhen: (p) => p.page === 'aleph0' && p.model === 'hotel'
     },
-    { id: 'rows', label: 'Listed sequences', min: 6, max: 14, step: 1, default: 10, format: (v) => `${v} rows`, showWhen: (p) => p.page === 'diagonal' },
+    { id: 'rows', label: 'Listed sequences', min: 6, max: 14, step: 1, default: 10, format: (v) => String.raw`\(${v}\) rows`, showWhen: (p) => p.page === 'diagonal' },
     {
       id: 'shuffle', type: 'action', label: 'New candidate list', buttonLabel: 'Shuffle sequences',
       showWhen: (p) => p.page === 'diagonal'
     },
-    { id: 'dimension', label: 'Finite set size n', min: 1, max: 5, step: 1, default: 4, format: (v) => `n = ${v}`, showWhen: (p) => p.page === 'power' },
+    { id: 'dimension', label: String.raw`Finite set size \(n\)`, min: 1, max: 5, step: 1, default: 4, format: (v) => String.raw`\(n=${v}\)`, showWhen: (p) => p.page === 'power' },
     {
-      id: 'construct', type: 'action', label: 'Cantor construction', buttonLabel: 'Construct diagonal set D',
+      id: 'construct', type: 'action', label: 'Cantor construction', buttonLabel: String.raw`Construct diagonal set \(D\)`,
       showWhen: (p) => p.page === 'power'
     },
-    { id: 'k', label: 'Aleph index k', min: 0, max: 5, step: 1, default: 0, format: (v) => `ℵ${['₀','₁','₂','₃','₄','₅'][v]}`, showWhen: (p) => p.page === 'ladder' }
+    { id: 'k', label: String.raw`Aleph index \(k\)`, min: 0, max: 5, step: 1, default: 0, format: (v) => String.raw`\(\aleph_{${v}}\)`, showWhen: (p) => p.page === 'ladder' }
   ],
 
   engine: null,
@@ -206,24 +210,24 @@ export const InfinitySpell = {
     if (page === 'aleph0') {
       const model = this.params.model || 'integers';
       if (model === 'integers') {
-        this._readoutEl.textContent = String.raw`\(\mathbb{Z}: 0,1,-1,2,-2,3,-3,\ldots\)` + ' Pair the n-th entry with ' + String.raw`\(n\in\mathbb{N}\)` + '.';
+        this._readoutEl.textContent = String.raw`\(\mathbb{Z}: 0,1,-1,2,-2,3,-3,\ldots\)` + ' Pair the ' + String.raw`\(n\)` + '-th entry with ' + String.raw`\(n\in\mathbb{N}\)` + '.';
       } else if (model === 'rationals') {
         this._readoutEl.textContent = String.raw`\(\mathbb{Q}: p/q,\quad q>0,\quad \gcd(|p|,q)=1\)` + ' — enumerate reduced fractions by diagonals; skip duplicates.';
       } else {
         this._readoutEl.textContent = this.hotelShifted
-          ? 'All guests moved n → n + 1. Room 1 is now available for the new guest.'
-          : 'Every room is occupied. Move guest n to room n + 1, then welcome a new guest into room 1.';
+          ? String.raw`All guests moved \(n\mapsto n+1\). Room \(1\) is now available for the new guest.`
+          : String.raw`Every room is occupied. Move guest \(n\) to room \(n+1\), then welcome a new guest into room \(1\).`;
       }
     } else if (page === 'diagonal') {
       if (!this.sequenceRows.length) this._generateBinaryRows();
       const bits = this.sequenceRows.map((row, i) => row[i % row.length] ? 0 : 1).join('');
-      this._readoutEl.textContent = String.raw`Diagonal complement (first ${bits.length} bits): ${bits}. It differs from row \(i\) at position \(i\).`;
+      this._readoutEl.textContent = String.raw`Diagonal complement (first \(${bits.length}\) bits): \(${bits}\). It differs from row \(i\) at position \(i\).`;
     } else if (page === 'power') {
       const n = this.params.dimension || 4;
       if (this.diagonalConstructed) {
-        this._readoutEl.textContent = String.raw`\(n=${n}: |\mathcal{P}(A)|=2^n=${2 ** n}\). The highlighted \(D\) is not hit by any arrow \(f(a)\).`;
+        this._readoutEl.textContent = String.raw`\(n=${n}: \lvert\mathcal{P}(A)\rvert=2^n=${2 ** n}\). The highlighted \(D\) is not hit by any arrow \(f(a)\).`;
       } else {
-        this._readoutEl.textContent = String.raw`Choose \(n=${n}\): the \(n\)-cube has ${2 ** n} vertices, one for each subset of \(A\). Then construct \(D=\{a\in A:a\notin f(a)\}\).`;
+        this._readoutEl.textContent = String.raw`Choose \(n=${n}\): the \(n\)-cube has \(2^n=${2 ** n}\) vertices, one for each subset of \(A\). Then construct \(D=\{a\in A:a\notin f(a)\}\).`;
       }
     } else {
       const k = this.params.k || 0;
@@ -235,6 +239,7 @@ export const InfinitySpell = {
 
   _buildVisual(initial = false) {
     if (!this.root) return;
+    const animate = !initial && shouldAnimateIntro();
     if (!initial && this.visualGroup) {
       if (this.outgoingGroup) {
         this.root.remove(this.outgoingGroup);
@@ -252,12 +257,12 @@ export const InfinitySpell = {
     else this._buildAlephLadder(next);
 
     rememberOpacity(next);
-    next.scale.setScalar(initial ? 1 : 0.78);
-    if (!initial) setOpacity(next, 0.02);
+    next.scale.setScalar(animate ? 0.78 : 1);
+    if (animate) setOpacity(next, 0.02);
     this.root.add(next);
     this.visualGroup = next;
-    this.transitionT = initial ? 1 : 0;
-    if (initial && this.outgoingGroup) {
+    this.transitionT = animate ? 0 : 1;
+    if ((!animate || initial) && this.outgoingGroup) {
       this.root.remove(this.outgoingGroup);
       disposeTree(this.outgoingGroup);
       this.outgoingGroup = null;
@@ -495,14 +500,15 @@ export const InfinitySpell = {
 
   onUpdate(_elapsed, delta) {
     if (this.transitionT < 1 && this.visualGroup) {
-      this.transitionT = Math.min(1, this.transitionT + delta / 0.95);
+      if (!shouldAnimateIntro()) this.transitionT = 1;
+      else this.transitionT = Math.min(1, this.transitionT + delta / 0.95);
       const t = this.transitionT;
       const eased = t * t * (3 - 2 * t);
-      this.visualGroup.scale.setScalar(0.78 + 0.22 * eased);
-      setOpacity(this.visualGroup, Math.max(0.02, eased));
+      this.visualGroup.scale.setScalar(shouldAnimateIntro() ? 0.78 + 0.22 * eased : 1);
+      setOpacity(this.visualGroup, shouldAnimateIntro() ? Math.max(0.02, eased) : 1);
       if (this.outgoingGroup) {
-        this.outgoingGroup.scale.setScalar(1 - 0.22 * eased);
-        setOpacity(this.outgoingGroup, 1 - eased);
+        this.outgoingGroup.scale.setScalar(shouldAnimateIntro() ? 1 - 0.22 * eased : 0.001);
+        setOpacity(this.outgoingGroup, shouldAnimateIntro() ? 1 - eased : 0);
         if (t >= 1) {
           this.root.remove(this.outgoingGroup);
           disposeTree(this.outgoingGroup);

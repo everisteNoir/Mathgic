@@ -30,7 +30,9 @@ export function createSheerFaceMaterial(globalUniforms) {
       float pulseWave = 0.0;
 
       if (timeSincePulse >= 0.0 && timeSincePulse < 2.2) {
-        pulseWave = sin(distToHit * 16.0 - timeSincePulse * 10.0) * exp(-timeSincePulse * 2.0) * exp(-distToHit * 1.6);
+        float pulseIntro = smoothstep(0.0, 0.12, timeSincePulse);
+        pulseWave = sin(distToHit * 16.0 - timeSincePulse * 10.0)
+          * pulseIntro * exp(-timeSincePulse * 2.0) * exp(-distToHit * 1.6);
       }
 
       vWave = max(0.0, pulseWave);

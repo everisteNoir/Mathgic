@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css" />
-  <link rel="stylesheet" href="./css/style.css?v=23" />
+  <link rel="stylesheet" href="./css/style.css?v=41" />
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"></script>
 
@@ -32,7 +32,20 @@
   <div class="vignette" aria-hidden="true"></div>
 
   <!-- Independent floating wordmark: it moves from above the sealed book to the upper-left when opened. -->
-  <button id="floating-mathgic" class="floating-mathgic-title" type="button" aria-label="Open the MATHGIC grimoire">MATHGIC</button>
+  <button id="floating-mathgic" class="floating-mathgic-title" type="button" aria-label="Open the MATHGIC grimoire">
+    <svg class="wordmark-sigil" viewBox="0 0 480 124" aria-hidden="true" focusable="false">
+      <ellipse class="sigil-orbit" cx="240" cy="62" rx="222" ry="48" />
+      <path class="sigil-compass-axis" d="M240 0V30M225 15H255" />
+      <path class="sigil-medallion" d="M240 3 251 12 247 26 233 26 229 12Z" />
+      <circle class="sigil-node" cx="240" cy="15" r="1.7" />
+      <circle class="sigil-node" cx="18" cy="62" r="1.8" />
+      <circle class="sigil-node" cx="462" cy="62" r="1.8" />
+      <circle class="sigil-orbiting-light" r="2.2">
+        <animateMotion dur="26s" repeatCount="indefinite" path="M18 62A222 48 0 1 1 462 62A222 48 0 1 1 18 62" />
+      </circle>
+    </svg>
+    <span class="wordmark-label">MATHGIC</span>
+  </button>
 
   <!-- Global utilities stay outside Prologue, which is reserved for the chapter index. -->
   <div class="global-utility-rail" aria-label="Global controls">
@@ -137,17 +150,17 @@
       <p class="legend">Choose a chapter to open its mathematical world.</p>
       <nav class="chapter-index" aria-label="Chapters 1 to 3">
         <button class="toc-entry" type="button" data-chapter-link="prologue">
-          <span class="toc-index">01</span><span class="toc-symbol">α</span>
+          <span class="toc-index">01</span><span class="toc-symbol">\(\alpha\)</span>
           <span class="toc-copy"><strong>Prologue</strong><small>Map of the grimoire</small></span>
           <span class="toc-arrow" aria-hidden="true">↗</span>
         </button>
         <button class="toc-entry" type="button" data-chapter-link="polyhedra">
-          <span class="toc-index">02</span><span class="toc-symbol">Δ</span>
+          <span class="toc-index">02</span><span class="toc-symbol">\(\Delta\)</span>
           <span class="toc-copy"><strong>Polyhedra</strong><small>The five Platonic solids</small></span>
           <span class="toc-arrow" aria-hidden="true">↗</span>
         </button>
         <button class="toc-entry" type="button" data-chapter-link="golden-ratio">
-          <span class="toc-index">03</span><span class="toc-symbol">φ</span>
+          <span class="toc-index">03</span><span class="toc-symbol">\(\varphi\)</span>
           <span class="toc-copy"><strong>Golden Ratio</strong><small>Proportion, spirals and growth</small></span>
           <span class="toc-arrow" aria-hidden="true">↗</span>
         </button>
@@ -159,17 +172,17 @@
       <p class="legend">Further chapters explore projection, infinity and alternative geometries.</p>
       <nav class="chapter-index" aria-label="Chapters 4 to 6">
         <button class="toc-entry" type="button" data-chapter-link="projection">
-          <span class="toc-index">04</span><span class="toc-symbol">π</span>
+          <span class="toc-index">04</span><span class="toc-symbol">\(\pi\)</span>
           <span class="toc-copy"><strong>Projection</strong><small>Higher dimensions and shadows</small></span>
           <span class="toc-arrow" aria-hidden="true">↗</span>
         </button>
         <button class="toc-entry" type="button" data-chapter-link="infinity">
-          <span class="toc-index">05</span><span class="toc-symbol">ℵ</span>
+          <span class="toc-index">05</span><span class="toc-symbol">\(\aleph\)</span>
           <span class="toc-copy"><strong>Infinity</strong><small>Cantor and the hierarchy of infinities</small></span>
           <span class="toc-arrow" aria-hidden="true">↗</span>
         </button>
         <button class="toc-entry" type="button" data-chapter-link="non-euclidean">
-          <span class="toc-index">06</span><span class="toc-symbol">κ</span>
+          <span class="toc-index">06</span><span class="toc-symbol">\(\kappa\)</span>
           <span class="toc-copy"><strong>Non-Euclidean</strong><small>Curvature and new geometries</small></span>
           <span class="toc-arrow" aria-hidden="true">↗</span>
         </button>
@@ -196,15 +209,15 @@
         </div>
         <div class="euler-formula-line">\(V-E+F=2\)</div>
         <div class="euler-grid">
-          <div class="euler-stat"><span class="stat-val" id="stat-v">4</span><span class="stat-lbl">Vertices</span></div>
+          <div class="euler-stat"><span class="stat-val" id="stat-v">\(4\)</span><span class="stat-lbl">Vertices</span></div>
           <div class="euler-op">−</div>
-          <div class="euler-stat"><span class="stat-val" id="stat-e">6</span><span class="stat-lbl">Edges</span></div>
+          <div class="euler-stat"><span class="stat-val" id="stat-e">\(6\)</span><span class="stat-lbl">Edges</span></div>
           <div class="euler-op">+</div>
-          <div class="euler-stat"><span class="stat-val" id="stat-f">4</span><span class="stat-lbl">Faces</span></div>
+          <div class="euler-stat"><span class="stat-val" id="stat-f">\(4\)</span><span class="stat-lbl">Faces</span></div>
           <div class="euler-op">=</div>
-          <div class="euler-stat result"><span class="stat-val">2</span><span class="stat-lbl">Invariant</span></div>
+          <div class="euler-stat result"><span class="stat-val">\(2\)</span><span class="stat-lbl">Invariant</span></div>
         </div>
-        <div class="face-shape-note" id="info-face-shape">4 equilateral triangles • Dual: Self-dual</div>
+        <div class="face-shape-note" id="info-face-shape">\(4\) equilateral triangles • Dual: Self-dual</div>
       </section>
     </div>
 
@@ -218,7 +231,7 @@
         <div class="control-group spell-control-row">
           <div class="control-header">
             <label for="slider-unfold">Geometric unfolding</label>
-            <span class="control-val" id="val-unfold">0%</span>
+            <span class="control-val" id="val-unfold">\(0\%\)</span>
           </div>
           <input type="range" id="slider-unfold" min="0" max="1" step="0.005" value="0" />
         </div>
@@ -240,6 +253,6 @@
   </div>
 
   <!-- Launch ES Module Application -->
-  <script type="module" src="./js/main.js?v=23"></script>
+  <script type="module" src="./js/main.js?v=49"></script>
 </body>
 </html>

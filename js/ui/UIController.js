@@ -2,7 +2,8 @@
  * UIController.js — chapter controls, geometric feedback audio and URL state.
  */
 import { fxState } from '../core/FXState.js?v=23';
-import { FantasyUI } from './FantasyUI.js?v=23';
+import { renderInlineMathText } from '../core/MathRenderer.js?v=26';
+import { FantasyUI } from './FantasyUI.js?v=41';
 
 export class UIController {
   constructor(engine, eventBus, audioEngine, spellManager) {
@@ -71,7 +72,7 @@ export class UIController {
 
     this.sliderUnfold.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
-      this.valUnfold.textContent = `${Math.round(v * 100)}%`;
+      renderInlineMathText(this.valUnfold, String.raw`\(${Math.round(v * 100)}\%\)`);
       this.engine.setUnfold(v);
     });
     this.sliderUnfold.addEventListener('change', () => this.syncURLState());
@@ -108,10 +109,10 @@ export class UIController {
       this.infoPhilosophy.textContent = meta.philosophy;
       this.infoPhilosophy.style.borderLeftColor = meta.secondaryColor;
 
-      this.statV.textContent = geoData.vertices.length;
-      this.statE.textContent = geoData.edges.length;
-      this.statF.textContent = geoData.faces.length;
-      this.infoFaceShape.textContent = meta.faceShape;
+      renderInlineMathText(this.statV, String.raw`\(${geoData.vertices.length}\)`);
+      renderInlineMathText(this.statE, String.raw`\(${geoData.edges.length}\)`);
+      renderInlineMathText(this.statF, String.raw`\(${geoData.faces.length}\)`);
+      renderInlineMathText(this.infoFaceShape, meta.faceShape.replace(/^(\d+)/, String.raw`\($1\)`));
       this.infoTip.textContent = meta.interactionTip;
     });
 
@@ -132,11 +133,12 @@ export class UIController {
 
     this.eventBus.on('CHARGE_RELEASE', ({ energy }) => {
       const meta = this.engine.activeSolid?.meta;
-      this.audio.playRelease(meta?.baseFreq, energy);
+      this.audio.playRelease(meta?.baseFreq, energy, meta?.element);
     });
 
     this.eventBus.on('ENERGY_UPDATE', ({ energy }) => {
-      this.audio.setCharge(energy, this.engine.activeSolid?.meta?.baseFreq);
+      const activeSolid = this.engine.activeSolid;
+      this.audio.setCharge(energy, activeSolid?.meta?.baseFreq, activeSolid?.meta?.element);
     });
 
     this.eventBus.on('SPELL_TOGGLED', ({ spellId, active }) => {

@@ -1,16 +1,16 @@
 import { EventBus } from './core/EventBus.js?v=23';
-import { AudioEngine } from './core/AudioEngine.js?v=23';
-import { Engine } from './core/Engine.js?v=23';
-import { SpellManager } from './spells/SpellManager.js?v=23';
-import { UIController } from './ui/UIController.js?v=23';
-import { Grimoire } from './ui/Grimoire.js?v=23';
+import { AudioEngine } from './core/AudioEngine.js?v=25';
+import { Engine } from './core/Engine.js?v=37';
+import { SpellManager } from './spells/SpellManager.js?v=38';
+import { UIController } from './ui/UIController.js?v=44';
+import { Grimoire } from './ui/Grimoire.js?v=40';
 
 // Import Mathgic Spell Modules
-import { DualMorphSpell } from './spells/DualMorphSpell.js?v=23';
-import { GoldenRatioSpell } from './spells/GoldenRatioSpell.js?v=23';
-import { InfinitySpell } from './spells/InfinitySpell.js?v=23';
-import { NonEuclideanSpell } from './spells/NonEuclideanSpell.js?v=23';
-import { ProjectionSpell } from './spells/ProjectionSpell.js?v=23';
+import { DualMorphSpell } from './spells/DualMorphSpell.js?v=24';
+import { GoldenRatioSpell } from './spells/GoldenRatioSpell.js?v=26';
+import { InfinitySpell } from './spells/InfinitySpell.js?v=26';
+import { NonEuclideanSpell } from './spells/NonEuclideanSpell.js?v=26';
+import { ProjectionSpell } from './spells/ProjectionSpell.js?v=40';
 
 window.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('canvas-container');

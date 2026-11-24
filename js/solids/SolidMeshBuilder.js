@@ -4,11 +4,11 @@ import {
   createSheerFaceMaterial,
   createGlowingEdgeMaterial,
   createInnerFlameMaterial
-} from '../shaders/ElementShaders.js?v=23';
+} from '../shaders/ElementShaders.js?v=25';
 
 const DETONATION_PROFILE = {
   fire:   { spread: 1.34, twist: 1.08, lift: 0.48, swirl: 0.34, pulse: 0.9 },
-  earth:  { spread: 1.12, twist: 0.62, lift: -0.52, swirl: 0.12, pulse: 0.68 },
+  earth:  { spread: 1.12, twist: 0.62, lift: 0, swirl: 0.12, pulse: 0.68 },
   air:    { spread: 1.48, twist: 1.42, lift: 0.16, swirl: 0.92, pulse: 0.82 },
   water:  { spread: 1.18, twist: 0.52, lift: 0.08, swirl: 0.46, pulse: 0.72 },
   aether: { spread: 1.52, twist: 1.24, lift: 0.02, swirl: 0.68, pulse: 1.0 }
@@ -410,11 +410,12 @@ export class SolidMeshBuilder {
       const profile = DETONATION_PROFILE[style] || DETONATION_PROFILE.fire;
       const rebuildStart = 0.64;
       if (p < rebuildStart) {
+        const entrance = smooth01(p / 0.16);
         const launch = smooth01(p / 0.25);
         const drift = smooth01((p - 0.16) / 0.44);
         const fade = 1 - smooth01((p - 0.55) / 0.09);
-        const amplitude = profile.spread * (0.12 + drift * 0.88);
-        const spin = (0.18 + drift * profile.twist);
+        const amplitude = profile.spread * drift;
+        const spin = launch * (0.18 + drift * profile.twist);
         for (let i = 0; i < detonationStates.length; i++) {
           const state = detonationStates[i];
           const depthFactor = 1 / (1 + state.depth * 0.34);
@@ -426,15 +427,18 @@ export class SolidMeshBuilder {
             .addScaledVector(state.sideDirection, tangent * depthFactor);
           state.group.position.y += vertical * depthFactor;
           const signed = state.faceIndex % 2 === 0 ? 1 : -1;
-          state.deltaQuaternion.setFromAxisAngle(state.direction, spin * signed * depthFactor + Math.sin(phase) * 0.12);
+          state.deltaQuaternion.setFromAxisAngle(
+            state.direction,
+            spin * signed * depthFactor + Math.sin(phase) * 0.12 * launch
+          );
           state.group.quaternion.copy(state.baseQuaternion).multiply(state.deltaQuaternion);
           state.faceVisualGroup.visible = fade > 0.015;
           state.faceVisualGroup.scale.setScalar(Math.max(0.001, 0.94 + fade * 0.06));
-          state.faceVisualGroup.rotation.z = Math.sin(phase) * 0.08 * (1 - drift);
+          state.faceVisualGroup.rotation.z = Math.sin(phase) * 0.08 * (1 - drift) * launch;
           faceVisibility[state.faceIndex] = Math.max(0.0001, fade);
         }
-        faceMaterial.uniforms.uFaceBurst.value = profile.pulse * (0.42 + launch * 0.5) * fade;
-        edgeMaterial.uniforms.uDetonation.value = profile.pulse * fade;
+        faceMaterial.uniforms.uFaceBurst.value = profile.pulse * (0.42 + launch * 0.5) * fade * entrance;
+        edgeMaterial.uniforms.uDetonation.value = profile.pulse * fade * entrance;
         edgeBatch.visible = fade > 0.01;
         vertexBatch.visible = fade > 0.01;
         vertexMaterial.opacity = 0.9 * fade;
@@ -514,6 +518,21 @@ export class SolidMeshBuilder {
     coreRevealGroup.add(innerGroup);
 
     const disposables = [];
+    const coreTransitionRingGeometry = new THREE.TorusGeometry(0.38, 0.012, 6, 48);
+    const coreTransitionRingMaterial = new THREE.MeshBasicMaterial({
+      color: meta.tertiaryColor,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false
+    });
+    const coreTransitionRing = new THREE.Mesh(coreTransitionRingGeometry, coreTransitionRingMaterial);
+    coreTransitionRing.name = 'CoreTransitionRing';
+    coreTransitionRing.rotation.x = Math.PI / 2;
+    coreTransitionRing.visible = false;
+    coreRevealGroup.add(coreTransitionRing);
+    disposables.push(coreTransitionRingGeometry, coreTransitionRingMaterial);
     let coreAnimator = null;
 
     // Unfolding progress (0..1) and the "dissolve" progress k of the elemental core.
@@ -1001,11 +1020,16 @@ export class SolidMeshBuilder {
         });
       }
     });
-    const setCoreReveal = (progress) => {
+    const setCoreReveal = (progress, transitionFx = true) => {
       const p = THREE.MathUtils.clamp(progress, 0, 1);
       const reveal = p * p * (3 - 2 * p);
       coreRevealGroup.visible = reveal > 0.002 && unfold < 0.995;
       coreRevealGroup.scale.setScalar(0.08 + reveal * 0.92);
+      const ringPulse = Math.sin(Math.PI * reveal);
+      coreTransitionRing.visible = transitionFx && ringPulse > 0.002 && unfold < 0.995;
+      coreTransitionRing.scale.setScalar(0.18 + reveal * 1.18);
+      coreTransitionRing.rotation.set(Math.PI / 2, reveal * Math.PI * 2, 0);
+      coreTransitionRingMaterial.opacity = transitionFx ? 0.72 * ringPulse : 0;
       for (let i = 0; i < coreMaterialStates.length; i++) {
         const state = coreMaterialStates[i];
         const material = state.material;
@@ -1099,6 +1123,7 @@ export class SolidMeshBuilder {
       coreRevealGroup,
       fxGroup,
       setCoreReveal,
+      coreAnimationTime: 0,
       getDissolve: dissolve,
       coreAnimator,
       setUnfold,
@@ -1110,6 +1135,11 @@ export class SolidMeshBuilder {
       setInstanceHighlight,
       resetForActivation(unfoldFactor = 0) {
         endDetonation();
+        particles.visible = false;
+        particles.material.opacity = 0.85;
+        particles.scale.setScalar(1);
+        particles.rotation.set(0, 0, 0);
+        this.coreAnimationTime = 0;
         faceMaterial.uniforms.uFaceBurst.value = 0;
         edgeMaterial.uniforms.uDetonation.value = 0;
         vertexMaterial.opacity = 0.9;
