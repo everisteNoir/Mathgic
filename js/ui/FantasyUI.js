@@ -1,4 +1,4 @@
-import { fxState } from '../core/FXState.js?v=13';
+import { fxState } from '../core/FXState.js?v=23';
 
 const PRESS_TARGETS = 'button';
 
@@ -49,8 +49,8 @@ export class FantasyUI {
       window.setTimeout(() => {
         if (token !== this._panelSwapToken) return;
         containers.forEach((el) => el?.classList.remove('content-enter'));
-      }, 500);
-    }, 155);
+      }, 780);
+    }, 205);
   }
 
   /** Chapter changes stage their heading first, then reveal the page content. */
@@ -79,9 +79,9 @@ export class FantasyUI {
         window.setTimeout(() => {
           if (token !== this._panelSwapToken) return;
           all.forEach((el) => el?.classList.remove('content-enter', 'content-leaving'));
-        }, 500);
-      }, 105);
-    }, 155);
+        }, 780);
+      }, 145);
+    }, 205);
   }
 
   cancelPanelTransition(containers) {
@@ -91,10 +91,16 @@ export class FantasyUI {
     });
   }
 
-  chapterTransition(theme) {
+  chapterTransition(theme, chapterId = 'prologue') {
     if (theme?.primary) this.panel?.style.setProperty('--grimoire-accent', theme.primary);
     if (theme?.secondary) this.panel?.style.setProperty('--grimoire-secondary', theme.secondary);
-    this.portalTransition();
+    if (!fxState.enabled || !this.panel) return;
+    const classes = ['chapter-arrival', 'signature-prologue', 'signature-polyhedra', 'signature-golden-ratio', 'signature-projection', 'signature-infinity', 'signature-non-euclidean'];
+    this.panel.classList.remove(...classes);
+    void this.panel.offsetWidth;
+    const signature = `signature-${chapterId}`;
+    this.panel.classList.add(signature);
+    window.setTimeout(() => this.panel?.classList.remove(signature), 1500);
   }
 
   /** Pointer-driven CSS 3D tilt. No animation loop and no extra WebGL context. */
@@ -120,21 +126,6 @@ export class FantasyUI {
     document.addEventListener('pointerleave', reset);
   }
 
-  sparkBurst(x, y, count = 12) {
-    if (!fxState.enabled) return;
-    for (let i = 0; i < count; i++) {
-      const s = document.createElement('span');
-      s.className = 'spark';
-      const a = (i / count) * Math.PI * 2 + Math.random() * 0.5;
-      const d = 18 + Math.random() * 26;
-      s.style.left = `${x}px`;
-      s.style.top = `${y}px`;
-      s.style.setProperty('--dx', `${Math.cos(a) * d}px`);
-      s.style.setProperty('--dy', `${Math.sin(a) * d}px`);
-      document.body.appendChild(s);
-      setTimeout(() => s.remove(), 750);
-    }
-  }
 
   _bind() {
     // Ripple spreading from the exact point of contact
@@ -157,15 +148,7 @@ export class FantasyUI {
       if (!btn) return;
       // Soft chime for interface actions (silent unless sound is on)
       if (btn.id !== 'btn-audio') this.audio.playChime(2 + Math.floor(Math.random() * 4), 0.035);
-      // Spark burst on switches
-      const isSwitch =
-        (btn.classList.contains('choice-btn') && btn.parentElement.querySelectorAll('.choice-btn').length === 1) ||
-        btn.classList.contains('summon-btn') ||
-        btn.id === 'btn-fx';
-      if (isSwitch) {
-        const r = btn.getBoundingClientRect();
-        this.sparkBurst(r.left + r.width / 2, r.top + r.height / 2);
-      }
+      // No particle bursts on UI controls: the ripple and subtle state glow are enough.
       const group = btn.closest('.choice-group');
       if (group) requestAnimationFrame(() => this._placeGlider(group));
     });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
 
 /**
  * NonEuclideanSpell.js — Mathgic 4: Non-Euclidean Space & Gaussian Curvature Portal
@@ -12,7 +13,7 @@ export const NonEuclideanSpell = {
   name: 'Non-Euclidean Space (Curvature K)',
   isolateStage: true,
   hasLiveReadout: true,
-  initialReadout: 'HYPERBOLIC (K = -0.80) • Triangle Σθ < 180° • Parallels diverge',
+  initialReadout: String.raw`HYPERBOLIC \(K=-0.80\) • Triangle \(\sum\theta<180^\circ\) • Parallels diverge`,
   description:
     'Warps the fabric of space between Hyperbolic saddle geometry (K < 0), flat Euclidean space (K = 0), and Riemannian spherical curvature (K > 0).',
   controls: [
@@ -106,12 +107,13 @@ export const NonEuclideanSpell = {
   onParamChange(id, val) {
     if (id === 'curvature' && this._readoutEl) {
       if (val < -0.05) {
-        this._readoutEl.textContent = `HYPERBOLIC (K = ${val.toFixed(2)}) • Triangle Σθ < 180° • Parallels diverge`;
+        this._readoutEl.textContent = String.raw`HYPERBOLIC \(K=${val.toFixed(2)}\) • Triangle \(\sum\theta<180^\circ\) • Parallels diverge`;
       } else if (val > 0.05) {
-        this._readoutEl.textContent = `SPHERICAL (K = +${val.toFixed(2)}) • Triangle Σθ > 180° • Parallels converge`;
+        this._readoutEl.textContent = String.raw`SPHERICAL \(K=+${val.toFixed(2)}\) • Triangle \(\sum\theta>180^\circ\) • Parallels converge`;
       } else {
-        this._readoutEl.textContent = `EUCLIDEAN (K = 0.00) • Triangle Σθ = 180° • Flat space`;
+        this._readoutEl.textContent = String.raw`EUCLIDEAN \(K=0.00\) • Triangle \(\sum\theta=180^\circ\) • Flat space`;
       }
+      renderMathInElementSafe(this._readoutEl);
     }
   },
 

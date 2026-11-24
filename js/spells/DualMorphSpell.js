@@ -50,14 +50,15 @@ function sweepMaterial(color, opacity, band, side) {
 /**
  * DualMorphSpell.js — Dual Twin (part of the Polyhedra section, switched on from the Mathgic Lab panel)
  * Connects the face centers of the active Platonic solid to manifest its dual twin inside the crystal frame.
- * Materializes with a rising light sweep, a spark burst and implosion flash, and dematerializes in reverse.
+ * Materializes with a deliberate face/edge reveal and a restrained vertex glint; the control follows the same phase.
  */
 export const DualMorphSpell = {
   id: 'dual-morph',
   name: 'Dual Twin',
   isolateStage: false,
   userToggle: true, // switched on/off by a button in the Polyhedra panel (not a menu section)
-  outroDuration: 0.9,
+  summonDuration: 1.62,
+  outroDuration: 1.48,
   description:
     'The face centers of every Platonic solid form the vertices of its dual solid. Summon the geometric twin nested inside.',
   controls: [
@@ -75,9 +76,25 @@ export const DualMorphSpell = {
   group: null,
   phase: 0, // 0 = not manifested, 1 = fully formed
   dir: 1, // +1 materializing, -1 dematerializing
+  phaseState: 'idle',
+  eventBus: null,
+  _lastPhaseReport: -1,
+  _lastPhaseStateReport: null,
 
-  onActivate(engine) {
+  _reportPhase(force = false) {
+    const step = Math.floor(this.phase * 40);
+    if (!force && this.phaseState === this._lastPhaseStateReport && step === this._lastPhaseReport) return;
+    this._lastPhaseStateReport = this.phaseState;
+    this._lastPhaseReport = step;
+    this.eventBus?.emit('DUAL_MORPH_PHASE', { phase: this.phaseState, progress: this.phase });
+  },
+
+  onActivate(engine, eventBus) {
     this.engine = engine;
+    this.eventBus = eventBus;
+    this.phaseState = 'summoning';
+    this._lastPhaseReport = -1;
+    this._reportPhase(true);
     this.group = new THREE.Group();
     this.engine.spellLayer.add(this.group);
     this._rebuildDual();
@@ -88,6 +105,9 @@ export const DualMorphSpell = {
 
   onOutro() {
     this.dir = -1;
+    this.phaseState = 'dismissing';
+    this._lastPhaseReport = -1;
+    this._reportPhase(true);
   },
 
   onSolidChanged() {
@@ -95,6 +115,9 @@ export const DualMorphSpell = {
     this._rebuildDual();
     this.phase = 0; // re-materialize for the new solid
     this.dir = 1;
+    this.phaseState = 'summoning';
+    this._lastPhaseReport = -1;
+    this._reportPhase(true);
   },
 
   onParamChange() {
@@ -233,9 +256,21 @@ export const DualMorphSpell = {
 
   onUpdate(elapsed, delta) {
     if (!this.group || !this.engine.activeSolid) return;
-    this.phase = THREE.MathUtils.clamp(this.phase + (this.dir * delta) / (this.dir > 0 ? 1.1 : this.outroDuration), 0, 1);
+    const previous = this.phase;
+    this.phase = THREE.MathUtils.clamp(this.phase + (this.dir * delta) / (this.dir > 0 ? this.summonDuration : this.outroDuration), 0, 1);
     this.group.position.y = this.engine.activeSolid.rootGroup.position.y;
     this._apply(elapsed);
+    if (this.dir > 0 && previous < 1 && this.phase >= 1) {
+      this.phaseState = 'active';
+      this.phase = 1;
+      this._reportPhase(true);
+    } else if (this.dir < 0 && previous > 0 && this.phase <= 0) {
+      this.phaseState = 'idle';
+      this.phase = 0;
+      this._reportPhase(true);
+    } else {
+      this._reportPhase(false);
+    }
   },
 
   onDeactivate() {
@@ -244,6 +279,9 @@ export const DualMorphSpell = {
       this.engine.spellLayer.remove(this.group);
       this.group = null;
       this.faceMat = null;
+      this.phase = 0;
+      this.phaseState = 'idle';
+      this._reportPhase(true);
     }
   }
 };

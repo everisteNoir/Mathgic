@@ -1,5 +1,6 @@
-import { fxState } from '../core/FXState.js?v=13';
-import { CurvedBook3D } from './CurvedBook3D.js?v=13';
+import { fxState } from '../core/FXState.js?v=23';
+import { CurvedBook3D } from './CurvedBook3D.js?v=23';
+import { renderDisplayFormula, renderInlineMathText, renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
 
 const SOLIDS = [
   { id: 'tetrahedron', greek: 'PYR', name: 'Fire', accent: '#ff5722', secondary: '#fbbf24' },
@@ -33,6 +34,7 @@ export class Grimoire {
 
     this.el = document.getElementById('grimoire');
     this.cover = document.getElementById('book-cover');
+    this.floatingTitle = document.getElementById('floating-mathgic');
     this.bookStage = document.getElementById('book-3d-stage');
     this.leftInner = document.getElementById('page-left');
     this.rightInner = document.getElementById('page-right');
@@ -52,13 +54,17 @@ export class Grimoire {
 
     this.book3D = new CurvedBook3D(this.engine, this.bookStage, {
       onPrev: () => this.prev(),
-      onNext: () => this.next()
+      onNext: () => this.next(),
+      onChapterSelect: (chapterId) => this.goToChapter(chapterId)
     });
 
     this._buildPages();
+    this.book3D.setPose('sealed');
+    this.engine.setBookCameraMode?.('sealed');
     this._buildDualBlock();
     this._buildChapterRibbons();
     this._bind();
+    if (this.index >= 0) this.book3D.setContentsMode(this.pages[this.index].chapter.id === 'prologue');
   }
 
   // ------------------------------------------------------------------ structure
@@ -71,16 +77,11 @@ export class Grimoire {
     for (const def of CHAPTERS) {
       const chapter = { ...def, pages: [] };
       if (def.id === 'prologue') {
+        // Prologue is a single two-page table-of-contents spread—no references or controls.
         chapter.pages.push({
-          label: 'Introduction',
+          label: 'Contents',
           left: document.getElementById('pg-prologue-left'),
           right: document.getElementById('pg-prologue-right')
-        });
-        chapter.pages.push({
-          label: 'References',
-          isReferences: true,
-          left: document.getElementById('pg-prologue-ref-left'),
-          right: document.getElementById('pg-prologue-ref-right')
         });
       } else if (def.id === 'polyhedra') {
         SOLIDS.forEach((s) =>
@@ -109,6 +110,9 @@ export class Grimoire {
       chapter.pages.forEach((p, i) => {
         p.chapter = chapter;
         p.indexInChapter = i;
+        const pageMarker = `${String(i + 1).padStart(2, '0')} / ${String(chapter.pages.length).padStart(2, '0')}`;
+        if (p.pageIndexEl) p.pageIndexEl.textContent = pageMarker;
+        if (p.rightPageIndexEl) p.rightPageIndexEl.textContent = pageMarker;
         p.flat = this.pages.length;
         this.pages.push(p);
       });
@@ -118,38 +122,48 @@ export class Grimoire {
 
   _buildSpellPage(chapter, page) {
     const left = document.createElement('div');
-    left.className = 'page-face';
+    left.className = `page-face chapter-page chapter-knowledge-page chapter-${chapter.id}${chapter.id === 'infinity' ? ' infinity-study-page' : ''}`;
     left.dataset.real = '';
     left.innerHTML = `
+      <div class="chapter-page-overline"><span class="chapter-page-overline-label"></span><span class="chapter-page-overline-index"></span></div>
       <h3 class="page-title"></h3>
       <p class="legend"></p>
       <div class="concept-formula" hidden></div>
       <p class="concept-note" hidden></p>
     `;
+    left.querySelector('.chapter-page-overline-label').textContent = chapter.title.toUpperCase();
+    const pageIndexEl = left.querySelector('.chapter-page-overline-index');
+    pageIndexEl.textContent = 'STUDY';
+    page.pageIndexEl = pageIndexEl;
     left.querySelector('.page-title').textContent = page.label;
-    left.querySelector('.legend').textContent = page.legend || page.spell.description;
+    renderInlineMathText(left.querySelector('.legend'), page.legend || page.spell.description);
     if (page.formula) {
       const formula = left.querySelector('.concept-formula');
       formula.hidden = false;
-      formula.textContent = page.formula;
+      renderDisplayFormula(formula, page.formula);
     }
     if (page.note) {
       const note = left.querySelector('.concept-note');
       note.hidden = false;
-      note.textContent = page.note;
+      renderInlineMathText(note, page.note);
     }
     if (page.spell.hasLiveReadout) {
       const readout = document.createElement('div');
       readout.className = 'spell-live-readout';
       readout.textContent = page.spell.initialReadout || '';
+      renderMathInElementSafe(readout);
       left.appendChild(readout);
       page.readoutEl = readout;
     }
     const right = document.createElement('div');
-    right.className = 'page-face';
+    right.className = `page-face chapter-page chapter-controls-page chapter-${chapter.id}${chapter.id === 'infinity' ? ' infinity-controls-page' : ''}`;
+    const rightOverline = document.createElement('div');
+    rightOverline.className = 'chapter-page-overline';
+    rightOverline.innerHTML = `<span class="chapter-page-overline-label">INTERACTIVE PARAMETERS</span><span class="chapter-page-overline-index"></span>`;
+    page.rightPageIndexEl = rightOverline.querySelector('.chapter-page-overline-index');
     right.dataset.real = '';
     const controls = this.spells.buildControls(page.spell, page.pageControl, page.value);
-    right.appendChild(controls.el);
+    right.append(rightOverline, controls.el);
     page.left = left;
     page.right = right;
     page.refresh = controls.refresh;
@@ -160,18 +174,46 @@ export class Grimoire {
     const dual = this.spells.spells.get('dual-morph');
     const block = document.getElementById('dual-block');
     const btn = document.getElementById('btn-summon');
+    btn.classList.add('summon-btn');
+
     document.getElementById('dual-controls').appendChild(this.spells.buildControls(dual).el);
-    const paint = (on) => {
-      block.classList.toggle('on', on);
-      btn.textContent = on ? 'Dismiss Twin' : 'Summon Twin';
+
+    const paint = (phase, progress = dual.phase || 0) => {
+      btn.dataset.phase = phase;
+      btn.classList.toggle('is-busy', phase === 'summoning' || phase === 'dismissing');
+      btn.setAttribute('aria-busy', phase === 'summoning' || phase === 'dismissing' ? 'true' : 'false');
+      block.classList.toggle('on', phase === 'active' || phase === 'dismissing');
+      block.classList.toggle('summoning', phase === 'summoning');
+      block.classList.toggle('dismissing', phase === 'dismissing');
+      btn.style.setProperty('--summon-progress', `${Math.round(progress * 100)}%`);
+      btn.textContent = phase === 'summoning' ? 'Summoning Twin…'
+        : phase === 'dismissing' ? 'Dismissing Twin…'
+        : phase === 'active' ? 'Dismiss Twin' : 'Summon Twin';
+      btn.disabled = phase === 'summoning' || phase === 'dismissing';
     };
+
     btn.addEventListener('click', () => {
-      dual.wanted = !dual.wanted;
-      this.spells.setSpellActive('dual-morph', dual.wanted);
+      if (btn.disabled) return;
+      const shouldSummon = dual.phaseState === 'idle' || dual.phaseState === 'dismissing';
+      dual.wanted = shouldSummon;
+      if (shouldSummon) {
+        paint('summoning', 0);
+        this.spells.setSpellActive('dual-morph', true);
+      } else {
+        paint('dismissing', dual.phase || 1);
+        this.spells.setSpellActive('dual-morph', false);
+      }
     });
+
+    this.eventBus.on('DUAL_MORPH_PHASE', ({ phase, progress }) => paint(phase, progress));
     this.eventBus.on('SPELL_TOGGLED', ({ spellId, active }) => {
-      if (spellId === 'dual-morph') paint(active);
+      if (spellId !== 'dual-morph') return;
+      // Do not paint the final label here. The spell's own geometric phase is authoritative.
+      if (active) paint('summoning', dual.phase || 0);
+      else if (dual.phase > 0) paint('dismissing', dual.phase);
+      else paint('idle', 0);
     });
+    paint('idle', 0);
   }
 
   _buildChapterRibbons() {
@@ -252,14 +294,34 @@ export class Grimoire {
     this.el.style.setProperty('--grimoire-accent', theme.primary || '#fbbf24');
     this.el.style.setProperty('--grimoire-secondary', theme.secondary || '#38bdf8');
     this.el.dataset.chapter = this.activeChapterId || 'prologue';
+    this.el.style.setProperty('--chapter-accent', theme.primary || '#fbbf24');
+  }
+
+
+  updatePolyhedraTheme(meta) {
+    if (!meta || this.activeChapterId !== 'polyhedra') return;
+    this.el.style.setProperty('--grimoire-accent', meta.secondaryColor || meta.primaryColor || '#fbbf24');
+    this.el.style.setProperty('--grimoire-secondary', meta.tertiaryColor || '#38bdf8');
+    this.el.style.setProperty('--chapter-accent', meta.secondaryColor || meta.primaryColor || '#fbbf24');
+    this.el.dataset.solid = meta.id || 'tetrahedron';
   }
 
   // ------------------------------------------------------------------ open / close
   open() {
     if (this.opened) return;
     this.opened = true;
+    this.engine.setExplorationVisible(true);
+    const isPrologue = this.activeChapterId === 'prologue' || !this.activeChapterId;
+    const isPolyhedra = this.activeChapterId === 'polyhedra';
+    this.engine.setHoldInteractionEnabled(isPolyhedra);
+    document.body.classList.toggle('polyhedra-active', isPolyhedra);
+    this.el.classList.toggle('prologue-reading', isPrologue);
+    this.book3D.setContentsMode(isPrologue);
+    this.book3D.setPose(isPrologue ? 'top-down' : 'chapter');
+    this.engine.setBookCameraMode?.(isPrologue ? 'prologue' : 'chapter');
     this.el.classList.replace('closed', 'open');
     this.cover.setAttribute('aria-expanded', 'true');
+    this.floatingTitle?.setAttribute('aria-label', 'Close the MATHGIC grimoire');
     this.book3D.setOpen(true);
     if (this.index >= 0) {
       const theme = this._themeForPage(this.pages[this.index]);
@@ -277,9 +339,17 @@ export class Grimoire {
     if (!this.opened) return;
     this.book3D.finishFlip({ render: false });
     this.opened = false;
+    this.engine.setHoldInteractionEnabled(false);
+    document.body.classList.remove('polyhedra-active');
+    this.book3D.setContentsMode(false);
+    this.el.classList.remove('prologue-reading');
+    this.book3D.setPose('sealed');
+    this.engine.setBookCameraMode?.('sealed');
     this.book3D.setOpen(false);
+    this.engine.setExplorationVisible(false);
     this.el.classList.replace('open', 'closed');
     this.cover.setAttribute('aria-expanded', 'false');
+    this.floatingTitle?.setAttribute('aria-label', 'Open the MATHGIC grimoire');
     this._updateBookMetrics();
   }
 
@@ -288,8 +358,21 @@ export class Grimoire {
   }
 
   _updateBookMetrics() {
+    const h = this.bookStage?.getBoundingClientRect().height || 240;
+    const vh = window.innerHeight;
+    const bookH = this.opened ? h + 96 : 84;
+    document.documentElement.style.setProperty('--book-h', `${bookH}px`);
     document.body.classList.toggle('book-is-open', this.opened);
-    this.engine.setBookView(0, 1);
+
+    // Reuse Build 11's camera pull-back calculation so the solid/spell stage
+    // has enough breathing room above the same bottom-centred book position.
+    const covered = this.opened ? h + 86 : 0;
+    const free = Math.max(220, vh - covered);
+    const dist = this.engine.targetCameraDistance || 3.6;
+    const fov = this.engine.camera?.fov || 45;
+    const diameter = (1.15 * vh) / (dist * Math.tan((fov / 2) * (Math.PI / 180)));
+    const zoom = this.opened ? Math.min(1.65, Math.max(1, diameter / (0.88 * free))) : 1;
+    this.engine.setBookView(0, zoom);
     this.book3D.updateAnchor();
   }
 
@@ -326,6 +409,7 @@ export class Grimoire {
     const page = this.pages[i];
     const prevChapter = this.activeChapterId;
     const chapterChanged = page.chapter.id !== prevChapter;
+    this._deferBookContentsMode = animate && chapterChanged;
 
     this.index = i;
     this._enter(page);
@@ -359,14 +443,17 @@ export class Grimoire {
     }
 
     if (animate) {
-      this.book3D.triggerFlip(dir, nextTheme);
+      this.book3D.triggerFlip(dir, nextTheme, { nextContents: page.chapter.id === 'prologue' });
       this.audio.playFlip();
     } else {
       this.book3D.setTheme(nextTheme);
+      this.book3D.setContentsMode(page.chapter.id === 'prologue');
     }
+    this._deferBookContentsMode = false;
 
     if (animate && chapterChanged) {
-      this.fantasy.chapterTransition?.(nextTheme);
+      this.engine.playChapterSignature?.(page.chapter.id, nextTheme.primary);
+      this.fantasy.chapterTransition?.(nextTheme, page.chapter.id);
     } else if (this.opened && fxState.enabled) {
       this.fantasy.retrigger(this.leftInner, 'swap');
       this.fantasy.retrigger(this.rightInner, 'swap');
@@ -384,13 +471,23 @@ export class Grimoire {
     const spell = page.spell || null;
     if (spell && page.pageControl) spell.params[page.pageControl] = page.value;
 
-    this.engine.setHoldInteractionEnabled(ch.id === 'polyhedra');
+    this.engine.setHoldInteractionEnabled(this.opened && ch.id === 'polyhedra');
+    document.body.classList.toggle('polyhedra-active', this.opened && ch.id === 'polyhedra');
+    if (this.opened) {
+      this.book3D.setPose(ch.id === 'prologue' ? 'top-down' : 'chapter');
+      this.engine.setBookCameraMode?.(ch.id === 'prologue' ? 'prologue' : 'chapter');
+    } else {
+      // URL restoration may select a chapter before the user opens the tome.
+      // The landing view remains sealed/top-down until the explicit open action.
+      this.book3D.setPose('sealed');
+      this.engine.setBookCameraMode?.('sealed');
+    }
 
     if (ch.id !== this.activeChapterId) {
       const first = this.activeChapterId !== null;
       this.activeChapterId = ch.id;
       const stageSpell = ch.spell ? this.spells.spells.get(ch.spell) : null;
-      this.engine.setStageSolidVisible(!stageSpell?.isolateStage);
+      this.engine.setStageSolidVisible(ch.id !== 'prologue' && !stageSpell?.isolateStage);
       for (const s of this.spells.spells.values()) {
         if (s.userToggle) {
           this.spells.setSpellActive(s.id, !stageSpell && s.wanted, { instant: !!stageSpell });
@@ -403,6 +500,14 @@ export class Grimoire {
       // Chapter-level portal transition is triggered after both content panes are staged in goTo().
     } else if (spell && page.pageControl) {
       spell.onParamChange?.(page.pageControl, page.value);
+    }
+
+    if (ch.id === 'polyhedra') {
+      const markerText = `${String(page.indexInChapter + 1).padStart(2, '0')} / 05`;
+      const marker = document.getElementById('poly-page-marker');
+      const rightMarker = document.getElementById('poly-page-marker-right');
+      if (marker) marker.textContent = markerText;
+      if (rightMarker) rightMarker.textContent = markerText;
     }
 
     if (page.solid && this.engine.activeSolid?.solidId !== page.solid) {
@@ -430,24 +535,44 @@ export class Grimoire {
     this._unmount(this.rightInner);
     this.leftInner.appendChild(page.left);
     this.rightInner.appendChild(page.right);
+    renderMathInElementSafe(page.left);
+    renderMathInElementSafe(page.right);
 
-    const isReferences = !!page.isReferences;
-    if (this.leftPanelCrown) this.leftPanelCrown.textContent = isReferences ? 'Selected Reading' : 'Arcane Knowledge';
-    if (this.rightPanelCrown) this.rightPanelCrown.textContent = isReferences ? 'Source Notes' : 'Spell Controls';
+    const isContents = page.chapter.id === 'prologue';
+    this.el.classList.toggle('prologue-reading', isContents);
+    this.book3D.setContentsMode(isContents, { defer: !!this._deferBookContentsMode || !!this.book3D.flipState });
+    if (this.leftPanelCrown) this.leftPanelCrown.textContent = 'Arcane Knowledge';
+    if (this.rightPanelCrown) this.rightPanelCrown.textContent = 'Spell Controls';
     this.el.dataset.page = `${page.chapter.id}-${page.indexInChapter}`;
+    // The Prologue stage is almost full-screen; returning to a chapter restores
+    // the compact Build 11 book dock. Recalculate the world-camera pull-back
+    // after the chapter's CSS layout has been applied.
+    requestAnimationFrame(() => this._updateBookMetrics());
   }
 
   // ------------------------------------------------------------------ input
   _bind() {
+    this.el.addEventListener('click', (event) => {
+      const entry = event.target.closest('[data-chapter-link]');
+      if (!entry || !this.el.contains(entry)) return;
+      event.preventDefault();
+      this.goToChapter(entry.dataset.chapterLink);
+    });
+
     this.cover.addEventListener('click', () => this.open());
-    document.getElementById('book-close').addEventListener('click', () => this.close());
+    this.floatingTitle?.addEventListener('click', () => this.toggle());
+    document.getElementById('book-close')?.addEventListener('click', () => this.close());
+    document.getElementById('book-close-prologue')?.addEventListener('click', () => this.close());
+    document.getElementById('focus-return')?.addEventListener('click', () => this.engine.exitFocusMode());
 
     document.addEventListener('keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'Escape') {
-        this.close();
+        if (this.engine.isFocusMode?.()) this.engine.exitFocusMode();
+        else this.close();
         return;
       }
+      if (this.engine.isFocusMode?.()) return;
       if (!this.opened) {
         if (e.key === 'Enter' && document.activeElement === document.body) this.open();
         return;
@@ -473,7 +598,7 @@ export class Grimoire {
 
   /** Opens at the page named by the URL parameters (the book itself stays closed). */
   restore({ section, page, solid }) {
-    let ch = this.chapters.find((c) => c.id === section) || this.chapters.find((c) => c.id === 'polyhedra');
+    let ch = this.chapters.find((c) => c.id === section) || this.chapters.find((c) => c.id === 'prologue');
     let idx = 0;
     if (ch.id === 'polyhedra') {
       idx = Math.max(0, SOLIDS.findIndex((s) => s.id === solid));

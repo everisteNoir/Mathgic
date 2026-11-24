@@ -47,6 +47,7 @@ export function createSheerFaceMaterial(globalUniforms) {
     uniform vec3 uColorPrimary;
     uniform vec3 uColorSecondary;
     uniform vec3 uColorTertiary;
+    uniform float uFaceBurst;
 
     varying vec3 vWorldPos;
     varying vec3 vNormal;
@@ -58,15 +59,16 @@ export function createSheerFaceMaterial(globalUniforms) {
       float fresnel = pow(1.0 - abs(dot(viewDir, normalize(vNormal))), 3.6);
 
       vec3 col = mix(uColorPrimary, uColorTertiary, fresnel);
-      // Nearly invisible faces (0.018 base alpha) + subtle edge rim + click wave
-      float alpha = 0.018 + fresnel * 0.13 + vWave * 0.25 + uEnergy * 0.04;
+      col = mix(col, vec3(1.0, 0.94, 0.78), clamp(uFaceBurst * 0.58, 0.0, 0.58));
+      // Faces remain translucent at rest and become readable during fracture/rebirth.
+      float alpha = 0.018 + fresnel * 0.13 + vWave * 0.25 + uEnergy * 0.04 + uFaceBurst * 0.34;
 
       gl_FragColor = vec4(col, clamp(alpha, 0.015, 0.35));
     }
   `;
 
   const mat = new THREE.ShaderMaterial({
-    uniforms: globalUniforms,
+    uniforms: { ...globalUniforms, uFaceBurst: { value: 0 } },
     vertexShader,
     fragmentShader,
     transparent: true,
@@ -85,10 +87,20 @@ export function createGlowingEdgeMaterial(globalUniforms) {
   const vertexShader = /* glsl */ `
     varying vec2 vUv;
     varying vec3 vWorldPos;
+    varying vec3 vInstanceColor;
 
     void main() {
       vUv = uv;
-      vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+      vec4 localPosition = vec4(position, 1.0);
+      #ifdef USE_INSTANCING
+        localPosition = instanceMatrix * localPosition;
+      #endif
+      #ifdef USE_INSTANCING_COLOR
+        vInstanceColor = instanceColor;
+      #else
+        vInstanceColor = vec3(1.0);
+      #endif
+      vec4 worldPosition = modelMatrix * localPosition;
       vWorldPos = worldPosition.xyz;
       gl_Position = projectionMatrix * viewMatrix * worldPosition;
     }
@@ -101,20 +113,19 @@ export function createGlowingEdgeMaterial(globalUniforms) {
     uniform vec3 uColorSecondary;
     uniform vec3 uColorTertiary;
     uniform float uHoverBoost;
+    uniform float uDetonation;
 
     varying vec2 vUv;
     varying vec3 vWorldPos;
+    varying vec3 vInstanceColor;
 
     void main() {
-      // Smooth wave traveling along the edge strut (vUv.y runs 0 -> 1 along cylinder length)
       float flow = 0.5 + 0.5 * sin(vUv.y * 6.2831 - uTime * 3.0 + (vWorldPos.x + vWorldPos.y) * 2.5);
       vec3 grad1 = mix(uColorPrimary, uColorSecondary, vUv.y);
       vec3 col = mix(grad1, uColorTertiary, flow * 0.65 + uEnergy * 0.35);
-
-      // Bright core hotness when charging or hovering
-      col += vec3(1.0, 0.95, 0.85) * (uEnergy * 0.45 + uHoverBoost * 0.45);
-
-      float alpha = 0.72 + uEnergy * 0.25 + uHoverBoost * 0.28;
+      col += vec3(1.0, 0.95, 0.85) * (uEnergy * 0.45 + uHoverBoost * 0.45 + uDetonation * 0.72);
+      col *= vInstanceColor;
+      float alpha = 0.72 + uEnergy * 0.25 + uHoverBoost * 0.28 + uDetonation * 0.16;
       gl_FragColor = vec4(col, clamp(alpha, 0.5, 1.0));
     }
   `;
@@ -122,7 +133,8 @@ export function createGlowingEdgeMaterial(globalUniforms) {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       ...globalUniforms,
-      uHoverBoost: { value: 0.0 }
+      uHoverBoost: { value: 0.0 },
+      uDetonation: { value: 0.0 }
     },
     vertexShader,
     fragmentShader,

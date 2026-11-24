@@ -105,10 +105,18 @@ export const PLATONIC_DATA = {
   }
 };
 
+// Topology is immutable after generation. Cache the comparatively expensive
+// dodecahedron adjacency/face discovery and hinge-tree construction so chapter
+// changes never repeat that CPU work.
+const SOLID_GEOMETRY_CACHE = new Map();
+
 /**
  * Generates exact normalized vertex coordinates (circumradius R = 1) and face topology
  */
 export function getSolidGeometryData(id) {
+  const cached = SOLID_GEOMETRY_CACHE.get(id);
+  if (cached) return cached;
+
   let rawVertices = [];
   let faces = [];
 
@@ -355,7 +363,7 @@ export function getSolidGeometryData(id) {
     }
   }
 
-  return {
+  const geometryData = {
     vertices: rawVertices,
     edges,
     faces,
@@ -365,4 +373,6 @@ export function getSolidGeometryData(id) {
     rootFace,
     baseY
   };
+  SOLID_GEOMETRY_CACHE.set(id, geometryData);
+  return geometryData;
 }

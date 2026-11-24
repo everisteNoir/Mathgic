@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { PHI } from '../solids/PlatonicMath.js?v=9';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
+import { PHI } from '../solids/PlatonicMath.js?v=23';
 
 const GOLDEN_ANGLE = 137.50776405; // degrees = 360° / φ²
 const TILT = -0.55; // flat patterns lean toward the camera so they stay readable while the stage spins
@@ -19,7 +20,7 @@ export const GoldenRatioSpell = {
   name: 'The Golden Ratio (φ = 1.618)',
   isolateStage: true,
   hasLiveReadout: true,
-  initialReadout: 'φ = 1.6180339887 • Long side ÷ short side = φ • Three rectangles meet at right angles',
+  initialReadout: String.raw`\(\varphi=1.6180339887\) • Long side ÷ short side = \(\varphi\) • Three rectangles meet at right angles`,
   description:
     'Explore where φ appears: orthogonal Golden Rectangles, the Fibonacci spiral, sunflower seed spirals, nested pentagrams and the golden cut.',
   controls: [
@@ -125,6 +126,11 @@ export const GoldenRatioSpell = {
   _growT: 0,
   _seedT: 0,
   _spiralShown: 0,
+  _currentMode: null,
+  _modeTransition: null,
+  _spiralReveal: 1,
+  _seedReveal: 1,
+  _rectangleReveal: 1,
 
   onActivate(engine) {
     this.engine = engine;
@@ -144,20 +150,44 @@ export const GoldenRatioSpell = {
     this._buildPentagram();
     this._buildCut();
     this.layers.rectangles.scale.setScalar(this.params.scale ?? 0.96);
-    this._applyMode();
+    this._currentMode = null;
+    this._applyMode(false);
+    if (this.params.mode === 'rectangles') {
+      this._rectangleReveal = 0;
+      this.layers.rectangles.children.forEach((plane) => plane.scale.setScalar(0.001));
+    }
     this.engine.spellLayer.add(this.group);
   },
 
   onParamChange(id) {
     switch (id) {
-      case 'mode': this._applyMode(); break;
+      case 'mode': this._applyMode(true); break;
       case 'scale': this.layers.rectangles.scale.setScalar(this.params.scale); break;
       case 'squares':
-      case 'growSpiral': this._buildSpiral(); break;
+        this._growT = 0;
+        this._spiralReveal = this.params.growSpiral ? 0 : 1;
+        this._buildSpiral();
+        this._updateSpiralDrawRange();
+        break;
+      case 'growSpiral':
+        this._growT = 0;
+        this._spiralReveal = this.params.growSpiral ? 0 : 1;
+        this._spiralShown = this.params.growSpiral ? 2 : (this.params.squares ?? 9);
+        this._updateSpiralDrawRange();
+        break;
       case 'seeds':
       case 'angle':
       case 'arms':
-      case 'growSeeds': this._updateSeeds(); break;
+        this._updateSeeds();
+        this._seedT = 0;
+        this._seedReveal = 0;
+        if (this.params.mode === 'phyllotaxis') this.layers.phyllotaxis.geometry.setDrawRange(0, 1);
+        break;
+      case 'growSeeds':
+        this._seedT = 0;
+        this._seedReveal = this.params.growSeeds ? 0 : 1;
+        this.layers.phyllotaxis.geometry.setDrawRange(0, this.params.growSeeds ? 1 : (this.params.seeds ?? 420));
+        break;
       case 'depth': this._buildPentagram(); break;
       case 'cut': this._buildCut(); break;
       default: break;
@@ -170,23 +200,70 @@ export const GoldenRatioSpell = {
     const p = this.params;
     this.layers.phyllotaxis.rotation.z = elapsed * 0.1;
 
+    // Each Golden Ratio model materializes in its own visual language. The mode
+    // swap is a short staged entrance, not an abrupt visible=true replacement.
+    if (this._modeTransition) {
+      const tr = this._modeTransition;
+      tr.t = Math.min(1, tr.t + delta / 1.12);
+      const e = tr.t * tr.t * (3 - 2 * tr.t);
+      const outgoing = this.layers[tr.from];
+      const incoming = this.layers[tr.to];
+      outgoing.scale.setScalar(Math.max(0.001, 1 - e * 0.92));
+      outgoing.rotation.z += delta * 0.5;
+      incoming.scale.setScalar(0.06 + e * 0.94);
+      incoming.rotation.z = (1 - e) * 0.12;
+      if (tr.t >= 1) {
+        outgoing.visible = false;
+        outgoing.scale.setScalar(1);
+        outgoing.rotation.z = 0;
+        incoming.visible = true;
+        incoming.scale.setScalar(1);
+        incoming.rotation.z = 0;
+        this._modeTransition = null;
+      }
+    }
+
+    if (p.mode === 'rectangles' && this._rectangleReveal < 1) {
+      this._rectangleReveal = Math.min(1, this._rectangleReveal + delta * 1.05);
+      this.layers.rectangles.children.forEach((plane, i) => {
+        const local = THREE.MathUtils.clamp((this._rectangleReveal - i * 0.22) / 0.62, 0, 1);
+        plane.scale.setScalar(0.001 + local * 0.999);
+      });
+    }
+    if (p.mode === 'spiral' && !p.growSpiral && this._spiralReveal < 1) {
+      this._spiralReveal = Math.min(1, this._spiralReveal + delta * 0.68);
+      this._updateSpiralDrawRange();
+    }
+    if (p.mode === 'phyllotaxis' && this._seedReveal < 1 && !p.growSeeds) {
+      this._seedReveal = Math.min(1, this._seedReveal + delta * 1.25);
+      const n = this.params.seeds ?? 420;
+      this.layers.phyllotaxis.geometry.setDrawRange(0, Math.max(1, Math.floor(n * this._seedReveal)));
+    }
+
     // Gyroscope: the three golden rectangles turn around the vertical axis
     if (p.spin > 0) this.layers.rectangles.rotation.y += delta * p.spin;
 
-    // Spiral auto-grow: rebuild only when the number of squares changes
-    if (p.mode === 'spiral' && p.growSpiral) {
-      this._growT += delta * 1.1;
-      const shown = 2 + Math.floor(this._growT % (p.squares - 1));
+    // Spiral AutoGrow reveals a prebuilt buffer continuously. Geometry is not
+    // removed or rebuilt during animation; only the draw range changes.
+    if (p.mode === 'spiral' && p.growSpiral && this._spiralReveal < 1) {
+      this._growT = Math.min(1, this._growT + delta / 6.0);
+      const t = this._growT;
+      this._spiralReveal = t * t * (3 - 2 * t);
+      this._updateSpiralDrawRange();
+      const shown = Math.max(2, Math.min(p.squares, Math.floor(this._spiralReveal * p.squares)));
       if (shown !== this._spiralShown) {
-        this._buildSpiral(shown);
+        this._spiralShown = shown;
         this._updateReadout();
       }
     }
 
-    // Seed auto-grow: reveal seeds one by one, then hold the full flower for a moment
-    if (p.mode === 'phyllotaxis' && p.growSeeds) {
-      this._seedT += delta * p.seeds * 0.18;
-      const count = Math.min(p.seeds, Math.floor(this._seedT % (p.seeds * 1.25)));
+    // Seed AutoGrow is a smooth one-shot growth: particles appear from the
+    // centre outward, then remain in place instead of abruptly resetting.
+    if (p.mode === 'phyllotaxis' && p.growSeeds && this._seedReveal < 1) {
+      this._seedT = Math.min(1, this._seedT + delta / 5.8);
+      const t = this._seedT;
+      this._seedReveal = t * t * (3 - 2 * t);
+      const count = Math.floor((p.seeds ?? 420) * this._seedReveal);
       this.layers.phyllotaxis.geometry.setDrawRange(0, Math.max(1, count));
     }
   },
@@ -203,11 +280,44 @@ export const GoldenRatioSpell = {
     }
   },
 
-  _applyMode() {
+  _applyMode(animate = true) {
     const mode = this.params.mode ?? 'rectangles';
-    Object.entries(this.layers).forEach(([key, layer]) => {
-      layer.visible = key === mode;
-    });
+    const previous = this._currentMode;
+    this._currentMode = mode;
+    if (animate && previous && previous !== mode) {
+      Object.entries(this.layers).forEach(([key, layer]) => {
+        layer.visible = key === previous || key === mode;
+        if (key === mode) layer.scale.setScalar(0.06);
+      });
+      this._modeTransition = { from: previous, to: mode, t: 0 };
+      if (mode === 'rectangles') {
+        this._rectangleReveal = 0;
+        this.layers.rectangles.children.forEach((plane) => plane.scale.setScalar(0.001));
+      }
+      if (mode === 'spiral') {
+        this._growT = 0;
+        this._spiralReveal = this.params.growSpiral ? 0 : 0;
+        this._updateSpiralDrawRange();
+      }
+      if (mode === 'phyllotaxis') {
+        this._seedT = 0;
+        this._seedReveal = 0;
+        this.layers.phyllotaxis.geometry.setDrawRange(0, 1);
+      }
+    } else {
+      Object.entries(this.layers).forEach(([key, layer]) => {
+        layer.visible = key === mode;
+        layer.scale.setScalar(1);
+        layer.rotation.z = 0;
+      });
+      this._modeTransition = null;
+      this._rectangleReveal = 1;
+      this._spiralReveal = 1;
+      this._seedReveal = 1;
+      if (mode === 'rectangles') this.layers.rectangles.children.forEach((plane) => plane.scale.setScalar(1));
+      if (mode === 'spiral') this._updateSpiralDrawRange();
+      if (mode === 'phyllotaxis') this.layers.phyllotaxis.geometry.setDrawRange(0, this.params.seeds ?? 420);
+    }
     this._updateReadout();
   },
 
@@ -217,30 +327,31 @@ export const GoldenRatioSpell = {
     const mode = p.mode ?? 'rectangles';
     let text;
     if (mode === 'rectangles') {
-      text = 'φ = 1.6180339887 • Long side ÷ short side = φ • Three rectangles meet at right angles';
+      text = String.raw`\(\varphi=1.6180339887\)` + ' • Long side ÷ short side = ' + String.raw`\(\varphi\)` + ' • Three rectangles meet at right angles';
     } else if (mode === 'spiral') {
       const n = this._spiralShown || p.squares;
       const f = this._fib(n);
       const ratio = f[n - 1] / f[n - 2];
-      text = `F(${n}) ÷ F(${n - 1}) = ${f[n - 1]} ÷ ${f[n - 2]} = ${ratio.toFixed(6)} • φ − ratio = ${Math.abs(PHI - ratio).toExponential(2)}`;
+      text = String.raw`\(\frac{F(${n})}{F(${n - 1})}=\frac{${f[n - 1]}}{${f[n - 2]}}=${ratio.toFixed(6)}\)` + ' • ' + String.raw`\(\varphi-ratio=${Math.abs(PHI - ratio).toExponential(2)}\)`;
     } else if (mode === 'phyllotaxis') {
       const golden = Math.abs(p.angle - GOLDEN_ANGLE) < 0.03;
       const arms = p.arms ? ` • ${p.arms} arms visible (Fibonacci)` : '';
       text = golden
-        ? `GOLDEN ANGLE ${GOLDEN_ANGLE.toFixed(3)}° • No seed ever lines up → dense, even packing${arms}`
-        : `${p.angle.toFixed(2)}° is not golden • Seeds fall into radial arms with gaps${arms}`;
+        ? String.raw`GOLDEN ANGLE \(${GOLDEN_ANGLE.toFixed(3)}^\circ\) • No seed ever lines up → dense, even packing${arms}`
+        : String.raw`\(${p.angle.toFixed(2)}^\circ\) is not golden • Seeds fall into radial arms with gaps${arms}`;
     } else if (mode === 'pentagram') {
-      text = `Diagonal ÷ side = φ • Each nested pentagram is 1/φ² = ${(1 / (PHI * PHI)).toFixed(4)} the size of the last`;
+      text = String.raw`\(\frac{\text{diagonal}}{\text{side}}=\varphi\)` + ' • ' + String.raw`\(1/\varphi^2=${(1 / (PHI * PHI)).toFixed(4)}\)` + ' the size of the last';
     } else {
       const a = Math.max(p.cut, 1 - p.cut);
       const b = 1 - a;
       const whole = 1 / a;
       const part = a / b;
       text = this._isGoldenCut()
-        ? `✨ GOLDEN SECTION • whole ÷ long = ${whole.toFixed(4)} = long ÷ short = ${part.toFixed(4)} = φ`
-        : `whole ÷ long = ${whole.toFixed(4)} • long ÷ short = ${part.toFixed(4)} • Equal only at φ — try 0.618`;
+        ? String.raw`✨ GOLDEN SECTION • \(\frac{whole}{long}=${whole.toFixed(4)}=\frac{long}{short}=${part.toFixed(4)}=\varphi\)`
+        : String.raw`\(\frac{whole}{long}=${whole.toFixed(4)}\) • \(\frac{long}{short}=${part.toFixed(4)}\) • Equal only at \(\varphi\) — try 0.618`;
     }
     this._readoutEl.textContent = text;
+    renderMathInElementSafe(this._readoutEl);
   },
 
   _isGoldenCut() {
@@ -298,13 +409,15 @@ export const GoldenRatioSpell = {
       { color: '#f472b6', pts: [[b, 0, -a], [b, 0, a], [-b, 0, a], [-b, 0, -a]] }
     ];
 
-    planes.forEach(({ color, pts: raw }) => {
+    planes.forEach(({ color, pts: raw }, planeIndex) => {
+      const plane = new THREE.Group();
+      plane.userData.revealIndex = planeIndex;
       const pts = raw.map(([x, y, z]) => new THREE.Vector3(x, y, z));
-      for (let i = 0; i < 4; i++) g.add(this._strut(pts[i], pts[(i + 1) % 4], color));
-      pts.forEach((pt) => g.add(this._dot(pt, color)));
+      for (let i = 0; i < 4; i++) plane.add(this._strut(pts[i], pts[(i + 1) % 4], color));
+      pts.forEach((pt) => plane.add(this._dot(pt, color)));
 
       const triGeo = new THREE.BufferGeometry().setFromPoints([pts[0], pts[1], pts[2], pts[0], pts[2], pts[3]]);
-      g.add(
+      plane.add(
         new THREE.Mesh(
           triGeo,
           new THREE.MeshBasicMaterial({
@@ -317,6 +430,7 @@ export const GoldenRatioSpell = {
           })
         )
       );
+      g.add(plane);
     });
     return g;
   },
@@ -324,62 +438,66 @@ export const GoldenRatioSpell = {
   _buildSpiral(count = this.params.squares ?? 9) {
     const layer = this.layers.spiral;
     this._clear(layer);
-    this._spiralShown = count;
-
     const sizes = this._fib(count);
     const squares = [];
     const arc = [];
-    let p = new THREE.Vector2(0, 0); // arc start
-    let h = new THREE.Vector2(1, 0); // heading
-    sizes.forEach((s) => {
-      const L = new THREE.Vector2(-h.y, h.x); // heading rotated +90°
-      const c = p.clone().addScaledVector(L, s); // quarter-circle center = square corner
-      const b = c.clone().addScaledVector(L, -s);
-      squares.push([c.clone(), b, b.clone().addScaledVector(h, s), c.clone().addScaledVector(h, s)]);
-      for (let k = 0; k < 24; k++) {
-        const t = (k / 24) * (Math.PI / 2);
-        arc.push(
-          c.clone()
-            .addScaledVector(L, -s * Math.cos(t))
-            .addScaledVector(h, s * Math.sin(t))
-        );
+    let p = new THREE.Vector2(0, 0);
+    let h = new THREE.Vector2(1, 0);
+    sizes.forEach((side) => {
+      const L = new THREE.Vector2(-h.y, h.x);
+      const c = p.clone().addScaledVector(L, side);
+      const b = c.clone().addScaledVector(L, -side);
+      squares.push([c.clone(), b, b.clone().addScaledVector(h, side), c.clone().addScaledVector(h, side)]);
+      for (let k = 0; k <= 24; k++) {
+        const angle = (k / 24) * (Math.PI / 2);
+        arc.push(c.clone().addScaledVector(L, -side * Math.cos(angle)).addScaledVector(h, side * Math.sin(angle)));
       }
-      p = c.clone().addScaledVector(h, s);
+      p = c.clone().addScaledVector(h, side);
       h = L;
     });
-    arc.push(p);
-
-    // Center and fit the whole construction inside the stage
     const box = new THREE.Box2().setFromPoints(squares.flat());
     const center = box.getCenter(new THREE.Vector2());
     const size = box.getSize(new THREE.Vector2());
-    const k = 2.7 / Math.max(size.x, size.y);
-    const to3 = (v) => new THREE.Vector3((v.x - center.x) * k, (v.y - center.y) * k, 0);
+    const scale = 2.7 / Math.max(size.x, size.y);
+    const to3 = (v) => new THREE.Vector3((v.x - center.x) * scale, (v.y - center.y) * scale, 0);
 
-    const linePts = [];
-    squares.forEach((sq) => {
-      for (let i = 0; i < 4; i++) linePts.push(to3(sq[i]), to3(sq[(i + 1) % 4]));
+    const linePoints = [];
+    squares.forEach((square) => {
+      for (let i = 0; i < 4; i++) linePoints.push(to3(square[i]), to3(square[(i + 1) % 4]));
     });
-    layer.add(
-      new THREE.LineSegments(
-        new THREE.BufferGeometry().setFromPoints(linePts),
-        new THREE.LineBasicMaterial({ color: '#7dd3fc', transparent: true, opacity: 0.75 })
-      )
+    const squareGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+    this._spiralLines = new THREE.LineSegments(
+      squareGeo,
+      new THREE.LineBasicMaterial({ color: '#7dd3fc', transparent: true, opacity: 0.76 })
     );
+    layer.add(this._spiralLines);
 
-    const curve = new THREE.CatmullRomCurve3(arc.map(to3));
-    layer.add(
-      new THREE.Mesh(
-        new THREE.TubeGeometry(curve, arc.length * 2, 0.014, 6, false),
-        new THREE.MeshBasicMaterial({
-          color: '#fde047',
-          transparent: true,
-          opacity: 0.95,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false
-        })
-      )
+    // A simple Line buffer supports progressive drawRange without rebuilding a tube mesh.
+    const arcGeo = new THREE.BufferGeometry().setFromPoints(arc.map(to3));
+    this._spiralArc = new THREE.Line(
+      arcGeo,
+      new THREE.LineBasicMaterial({ color: '#fde047', transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })
     );
+    layer.add(this._spiralArc);
+    this._spiralMaxSquares = count;
+    this._spiralShown = Math.max(2, Math.floor(count * (this._spiralReveal ?? 1)));
+    this._updateSpiralDrawRange();
+  },
+
+  _updateSpiralDrawRange() {
+    const reveal = THREE.MathUtils.clamp(this._spiralReveal ?? 1, 0, 1);
+    if (this._spiralLines?.geometry) {
+      const total = this._spiralLines.geometry.attributes.position.count;
+      // Each square contributes exactly eight vertices (four independent edges).
+      const perSquare = 8;
+      const shownSquares = Math.floor((this._spiralMaxSquares ?? this.params.squares ?? 9) * reveal);
+      const count = Math.min(total, shownSquares * perSquare);
+      this._spiralLines.geometry.setDrawRange(0, count);
+    }
+    if (this._spiralArc?.geometry) {
+      const total = this._spiralArc.geometry.attributes.position.count;
+      this._spiralArc.geometry.setDrawRange(0, Math.max(1, Math.floor(total * reveal)));
+    }
   },
 
   _buildPhyllotaxis() {

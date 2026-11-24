@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
 
 const sstep = THREE.MathUtils.smoothstep;
 const lerp = THREE.MathUtils.lerp;
@@ -105,7 +106,7 @@ export const ProjectionSpell = {
   name: 'Dimensional Projection',
   isolateStage: true,
   hasLiveReadout: true,
-  initialReadout: 'v ~ λv  ⇒  [x : y : z] — every multiple of a vector is the same projective point',
+  initialReadout: String.raw`\(v\sim\lambda v\)  \Rightarrow  \([x:y:z]\) — every multiple of a vector is the same projective point`,
   description:
     'Follow a space as it casts shadows into fewer dimensions, and watch what happens when every vector is identified with all of its multiples.',
   controls: [
@@ -820,9 +821,9 @@ export const ProjectionSpell = {
       const n = p.dim;
       const V = 2 ** n;
       const E = n * 2 ** (n - 1);
-      text = `${n}-cube • ${V} vertices (2^n) • ${E} edges (n·2^(n−1)) • ` +
+      text = String.raw`\(${n}\)-cube • \(${V}=2^n\) vertices • \(${E}=n\cdot2^{n-1}\) edges • ` +
         (p.proj === 'persp'
-          ? `x′ = x · d / (d − x_k), d = ${f(p.dist)}; vertices with d ≤ x_k escape to infinity`
+          ? String.raw`\(x'=\frac{xd}{d-x_k},\quad d=${f(p.dist)}\)` + '; vertices with ' + String.raw`\(d\le x_k\)` + ' escape to infinity'
           : 'parallel projection: the last coordinate is simply dropped');
     } else if (p.mode === 'quotient') {
       const dim = p.space;
@@ -835,8 +836,8 @@ export const ProjectionSpell = {
       const hom = `[${v.map((x) => f(x)).join(' : ')}]`;
       const chartPt = Math.abs(last) < 0.01 ? '∞  (last coordinate = 0)' : `(${v.slice(0, dim - 1).map((x) => f(x / last)).join(', ')})`;
       text = Math.abs(p.lambda) < 0.01
-        ? 'λ = 0 sends v to the origin, which is excluded: 0 belongs to no line, so it is not a point of P(V)'
-        : `v = (${v.map((x) => f(x)).join(', ')}) → ${hom} → chart ${chartPt} • λ = ${lam}: λv = (${w.map((x) => f(x)).join(', ')}) → same point ⇒ v ~ λv`;
+        ? String.raw`\(\lambda=0\)` + ' sends ' + String.raw`\(v\)` + ' to the origin, which is excluded: 0 belongs to no line, so it is not a point of ' + String.raw`\(\mathbb{P}(V)\)`
+        : String.raw`\(v=(${v.map((x) => f(x)).join(', ')})\) → \(${hom}\) → chart ${chartPt} • \(\lambda=${lam}: \lambda v=(${w.map((x) => f(x)).join(', ')})\) → same point ⇒ \(v\sim\lambda v\)`;
       if (p.parallels && dim === 3 && !p.applyH) text += ' • two parallel lines = two planes through O, meeting in a direction of z = 0: a point at infinity';
     } else {
       const H = this._H();
@@ -857,8 +858,9 @@ export const ProjectionSpell = {
         : affine
           ? 'AFFINE — parallels and ratios along a line are preserved; lengths and angles are not'
           : 'PROJECTIVE — only straightness and the cross-ratio survive; parallels meet on the horizon (gold)';
-      text = `${kind} • grid axes meet at ${f(ang, 1)}° • area × ${f(det)} • H = [${H.map((r) => r.map((x) => f(x)).join(' ')).join(' | ')}]`;
+      text = String.raw`${kind} • grid axes meet at \(${f(ang, 1)}^\circ\) • area \(\times ${f(det)}\) • \(H=\begin{bmatrix}${H.map((r) => r.map((x) => f(x)).join(' & ')).join('\\\\')}\end{bmatrix}\)`;
     }
     this._readoutEl.textContent = text;
+    renderMathInElementSafe(this._readoutEl);
   }
 };

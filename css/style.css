@@ -2358,7 +2358,7 @@ body.fx-off .floating-panel {
 
 
 /* ============================================================================
-   BUILD 13 — Build 11 book pose restored inside the shared Engine renderer
+   BUILD 14 — floating object stage and Prologue chapter index
    The stage is invisible; its box is used only to calculate the legacy projection.
    ============================================================================ */
 .book-3d-stage {
@@ -2395,7 +2395,7 @@ body.fx-off .floating-panel {
 }
 
 
-/* Build 13 — quiet chapter glyphs and an unboxed Prologue reading list. */
+/* Build 14 — quiet chapter glyphs and a two-page chapter table of contents. */
 .chapter-rail .chapter-tab .tab-name,
 .chapter-rail .chapter-tab:hover .tab-name,
 .chapter-rail .chapter-tab:focus-visible .tab-name { display: none !important; }
@@ -2468,3 +2468,1420 @@ body.fx-off .floating-panel {
 /* Match the Build 11 page-dock baseline; the shared-scene book stage uses its top as reference. */
 .book-bottom-bar { bottom: 12px !important; }
 @media (max-width: 860px) { .book-bottom-bar { bottom: 6px !important; } }
+
+
+/* =========================================================================
+   BUILD 14 — interactive objects anchored over the Grimoire + Prologue TOC
+   ========================================================================= */
+.global-utility-rail {
+  position: fixed;
+  top: 14px;
+  right: 22px;
+  z-index: 32;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+}
+.global-utility-rail .fx-pill {
+  position: static;
+  margin: 0;
+}
+.utility-glyph-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: rgba(225, 218, 197, .68);
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transition: color .22s ease, transform .22s ease, text-shadow .22s ease;
+}
+.utility-glyph-btn .utility-glyph {
+  font: 500 1.12rem/1 var(--font-script);
+  text-shadow: 0 0 10px rgba(214,168,75,.18);
+}
+.utility-glyph-btn:hover,
+.utility-glyph-btn:focus-visible,
+.utility-glyph-btn.is-active {
+  color: #ffe6a6;
+  transform: translateY(-2px);
+  text-shadow: 0 0 16px rgba(214,168,75,.48);
+  outline: none;
+}
+.utility-glyph-btn:focus-visible { outline: 1px solid rgba(214,168,75,.55); outline-offset: 3px; }
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+.chapter-index {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(13px, 2.2vh, 22px);
+  width: 100%;
+  padding: 5px 0 12px;
+}
+.toc-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px 30px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 1px 10px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--grimoire-accent) 18%, transparent);
+  border-radius: 0;
+  color: rgba(236, 232, 221, .8);
+  text-align: left;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transform: translateZ(14px);
+  transition: color .24s ease, transform .28s var(--ease-magic), border-color .24s ease;
+}
+.toc-entry:hover,
+.toc-entry:focus-visible {
+  color: #fff2ca;
+  border-bottom-color: color-mix(in srgb, var(--grimoire-accent) 58%, transparent);
+  transform: translate3d(5px, -1px, 24px);
+  outline: none;
+}
+.toc-index {
+  color: color-mix(in srgb, var(--grimoire-secondary) 65%, #d8dce7);
+  font: 500 .58rem var(--font-mono);
+  letter-spacing: .08em;
+}
+.toc-symbol {
+  color: var(--grimoire-accent);
+  font: italic 600 1.45rem/1 var(--font-script);
+  text-shadow: 0 0 13px color-mix(in srgb, var(--grimoire-accent) 34%, transparent);
+}
+.toc-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.toc-copy strong {
+  color: #f2e8d2;
+  font: 600 .74rem/1.2 var(--font-display);
+  letter-spacing: .075em;
+  text-transform: uppercase;
+}
+.toc-copy small {
+  color: rgba(195, 200, 211, .62);
+  font: 400 .62rem/1.35 var(--font-body);
+}
+.toc-arrow {
+  color: color-mix(in srgb, var(--grimoire-accent) 66%, transparent);
+  font-size: .78rem;
+  opacity: .55;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.toc-entry:hover .toc-arrow,
+.toc-entry:focus-visible .toc-arrow { opacity: 1; transform: translate(2px, -2px); }
+.contents-page .page-title { margin-bottom: 2px; }
+.contents-page .legend { margin-bottom: 5px; }
+.contents-page-continuation { padding-top: 19px; }
+@media (max-width: 760px) {
+  .global-utility-rail { top: 9px; right: 10px; gap: 5px; }
+  .utility-glyph-btn { width: 27px; height: 28px; }
+  .global-utility-rail .fx-pill { padding: 5px 9px; font-size: .55rem; }
+  .chapter-index { gap: 8px; }
+  .toc-entry { grid-template-columns: 20px 22px minmax(0, 1fr) 10px; gap: 5px; padding: 5px 0 7px; }
+  .toc-symbol { font-size: 1.05rem; }
+  .toc-index { font-size: .48rem; }
+  .toc-copy strong { font-size: .58rem; }
+  .toc-copy small { font-size: .5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toc-entry, .utility-glyph-btn { transition-duration: .01ms !important; }
+}
+
+
+/* ============================================================================
+   BUILD 15 — THE LIVING GRIMOIRE
+   Closed 3D cover, Focus Mode, chapter-pose book, KaTeX and Infinity study layout.
+   ============================================================================ */
+
+/* The visible cover is rendered in the main Three.js scene. This button is only
+   an accessible transparent hit surface and must not look like a second book. */
+.book-cover {
+  position: fixed !important;
+  left: 50% !important;
+  bottom: 10px !important;
+  display: block !important;
+  width: min(560px, 88vw) !important;
+  height: min(470px, 58vh) !important;
+  min-height: 138px;
+  padding: 0 !important;
+  transform: translateX(-50%) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: transparent !important;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 24;
+  outline-offset: -8px;
+}
+.book-cover:hover,
+.book-cover:focus-visible {
+  transform: translateX(-50%) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.book-cover:focus-visible { outline: 1px solid rgba(243, 210, 145, .65); }
+.grimoire.open .book-cover { opacity: 0 !important; pointer-events: none !important; }
+
+/* Opening state: show only the sealed 3D tome, not the exploration interface. */
+.grimoire.closed .floating-panel,
+.grimoire.closed .chapter-rail,
+.grimoire.closed .book-open,
+body:not(.book-is-open) .global-utility-rail,
+body:not(.book-is-open) .brand-mark {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.grimoire.closed .book-cover { opacity: 1 !important; visibility: visible !important; }
+
+/* Focus Mode hides the entire book interface but leaves the shared 3D scene live. */
+body.focus-mode .grimoire,
+body.focus-mode .global-utility-rail,
+body.focus-mode .brand-mark,
+body.focus-mode .toast,
+body.focus-mode #portal-fx {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+body.focus-mode .vignette { opacity: .72; }
+.focus-return {
+  position: fixed;
+  top: 22px;
+  left: 24px;
+  z-index: 80;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  border: 1px solid rgba(211, 179, 115, .42);
+  border-radius: 999px;
+  background: rgba(8, 11, 22, .42);
+  color: #efdfb8;
+  font: 600 .66rem var(--font-mono);
+  letter-spacing: .12em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: color .25s ease, border-color .25s ease, transform .25s ease;
+}
+.focus-return span { font-size: 1.1rem; }
+.focus-return:hover { color: #fff3ce; border-color: #d7b978; transform: translateX(-2px); }
+body.focus-mode .focus-return { display: inline-flex; }
+
+/* Infinity is presented as a four-study sequence, with the equation as its visual anchor. */
+#grimoire[data-chapter="infinity"] .infinity-study-page {
+  gap: 12px;
+  padding-top: 6px;
+}
+.infinity-study-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(167, 139, 250, .28);
+  color: #bba9ff;
+  font: 600 .55rem var(--font-mono);
+  letter-spacing: .13em;
+}
+.infinity-study-meta span:last-child { color: #63d8ef; white-space: nowrap; }
+#grimoire[data-chapter="infinity"] .page-title {
+  color: #f1eaff;
+  font-size: clamp(1.05rem, 1.55vw, 1.42rem);
+  letter-spacing: .025em;
+  text-shadow: 0 0 22px rgba(167, 139, 250, .22);
+}
+#grimoire[data-chapter="infinity"] .legend {
+  max-width: 46ch;
+  line-height: 1.58;
+  color: rgba(224, 226, 245, .9);
+}
+#grimoire[data-chapter="infinity"] .concept-formula {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 5px 0;
+  padding: 12px 0 13px;
+  color: #e7d8ff;
+  border-top: 1px solid rgba(167, 139, 250, .28);
+  border-bottom: 1px solid rgba(85, 216, 255, .22);
+  text-shadow: 0 0 20px rgba(167, 139, 250, .28);
+  overflow-x: auto;
+}
+#grimoire[data-chapter="infinity"] .concept-note {
+  padding-left: 11px;
+  border-left: 1px solid rgba(85, 216, 255, .5);
+  line-height: 1.5;
+  color: rgba(180, 199, 224, .82);
+}
+#grimoire[data-chapter="infinity"] .spell-live-readout {
+  margin-top: auto;
+  padding: 9px 0 0 11px;
+  background: transparent;
+  border-left: 1px solid rgba(167, 139, 250, .56);
+  border-radius: 0;
+  color: #d7d4fa;
+  line-height: 1.5;
+}
+#grimoire[data-chapter="infinity"] .infinity-controls-page .page-controls {
+  gap: 17px;
+}
+#grimoire[data-chapter="infinity"] .infinity-controls-page .control-group {
+  padding: 4px 0 13px;
+  border-bottom: 1px solid rgba(167, 139, 250, .17);
+}
+#grimoire[data-chapter="infinity"] .infinity-controls-page .control-header label {
+  color: #e5dbff;
+  letter-spacing: .06em;
+}
+#grimoire[data-chapter="infinity"] .infinity-controls-page .choice-btn.active {
+  color: #f2eaff;
+  border-color: rgba(167, 139, 250, .65);
+  box-shadow: 0 0 16px rgba(167, 139, 250, .14);
+}
+
+/* KaTeX: preserve Mathgic's typography while allowing long equations to scroll safely. */
+.concept-formula .katex-display { margin: .18em 0; text-align: left; }
+.concept-formula .katex,
+.math-inline .katex,
+.spell-live-readout .katex { color: inherit; font-size: 1.02em; }
+.concept-formula .katex-display > .katex { white-space: normal; }
+.spell-live-readout .katex-display { margin: .25em 0; text-align: left; }
+
+/* The Summon Twin action receives an unmistakable, but restrained, summon response. */
+#btn-summon.summon-btn {
+  position: relative;
+  isolation: isolate;
+  color: #bfeeff;
+  border-bottom-color: rgba(56, 189, 248, .62) !important;
+  transition: color .25s ease, text-shadow .25s ease, letter-spacing .25s ease;
+}
+#btn-summon.summon-btn::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 1.8rem; height: 1.8rem;
+  border: 1px solid rgba(125, 211, 252, .65);
+  border-radius: 50%;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.35);
+  pointer-events: none;
+}
+#btn-summon.summon-btn:hover {
+  color: #f0fbff;
+  text-shadow: 0 0 13px rgba(56, 189, 248, .55);
+  letter-spacing: .045em;
+}
+#btn-summon.summon-btn:active::before { animation: summon-rune-bloom .55s ease-out; }
+.dual-block.on #btn-summon.summon-btn {
+  color: #e2f7ff;
+  text-shadow: 0 0 16px rgba(56, 189, 248, .42);
+}
+@keyframes summon-rune-bloom {
+  0% { opacity: .85; transform: translate(-50%, -50%) scale(.35); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.4); }
+}
+
+/* More legible synchronized transitions for turning pages and replacing study content. */
+.page-inner.content-leaving {
+  opacity: 0;
+  transform: translate3d(0, 18px, -86px) rotateY(3deg) scale(.985);
+  filter: blur(2px);
+  transition: opacity .23s ease, transform .3s cubic-bezier(.2,.7,.2,1), filter .23s ease;
+}
+.page-inner.content-enter { animation: arcanePaneEnter15 .58s cubic-bezier(.18,.78,.22,1) both; }
+@keyframes arcanePaneEnter15 {
+  0% { opacity: 0; transform: translate3d(0, 24px, -78px) rotateY(-3deg) scale(.985); filter: blur(2px); }
+  72% { opacity: 1; transform: translate3d(0, -2px, 5px) rotateY(.4deg); filter: blur(.15px); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) rotateY(0); filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-return, #btn-summon.summon-btn, .page-inner.content-enter { animation: none !important; transition-duration: .01ms !important; }
+}
+@media (max-width: 600px) {
+  .book-cover { width: 82vw !important; height: 190px !important; bottom: 2px !important; }
+  .focus-return { top: 12px; left: 12px; padding: 8px 11px; font-size: .56rem; }
+}
+
+
+#btn-summon.summon-btn.summon-activating::before {
+  animation: summon-rune-bloom .62s cubic-bezier(.16,.78,.25,1);
+}
+#btn-summon.summon-btn.summon-activating {
+  color: #f5fbff;
+  text-shadow: 0 0 18px rgba(56, 189, 248, .82), 0 0 34px rgba(167, 139, 250, .38);
+  animation: summon-button-pulse .62s ease-out;
+}
+@keyframes summon-button-pulse {
+  0% { transform: translateY(0) scale(1); }
+  35% { transform: translateY(-1px) scale(1.035); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Build 11 book-stage metrics restored as the projection reference for the shared-scene book. */
+.book-3d-stage {
+  left: 50% !important;
+  width: min(650px, calc(100vw - 700px)) !important;
+  min-width: 390px !important;
+  height: clamp(205px, 26.5vh, 260px) !important;
+  bottom: 0 !important;
+  transform: translateX(-50%) !important;
+}
+@media (max-width: 1140px) {
+  .book-3d-stage {
+    width: min(520px, calc(100vw - 585px)) !important;
+    min-width: 320px !important;
+  }
+}
+@media (max-width: 860px) {
+  .book-3d-stage {
+    width: 96vw !important;
+    min-width: 0 !important;
+    height: 158px !important;
+  }
+}
+@media (max-width: 560px) {
+  .book-3d-stage {
+    width: 94vw !important;
+    height: 135px !important;
+  }
+}
+
+/* The transparent landing hit-area follows the real closed cover footprint. */
+.book-cover {
+  width: min(420px, 82vw) !important;
+  height: min(270px, 34vh) !important;
+  bottom: 18px !important;
+}
+@media (max-width: 600px) {
+  .book-cover {
+    width: 82vw !important;
+    height: min(190px, 28vh) !important;
+    bottom: 6px !important;
+  }
+}
+
+
+/* Build 16 — independent MATHGIC wordmark: sealed-title floats above the tome,
+   then glides to the upper-left as the same book opens. */
+.floating-mathgic-title {
+  position: fixed;
+  z-index: 30;
+  top: 13.5vh;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: clamp(2.1rem, 4.2vw, 3.7rem);
+  font-weight: 700;
+  letter-spacing: .34em;
+  padding-left: .34em;
+  color: #f2d493;
+  text-shadow: 0 0 12px rgba(242,195,108,.35), 0 0 34px rgba(217,185,121,.18);
+  opacity: 1;
+  transition:
+    top 920ms cubic-bezier(.2,.78,.2,1),
+    left 920ms cubic-bezier(.2,.78,.2,1),
+    transform 920ms cubic-bezier(.2,.78,.2,1),
+    font-size 920ms cubic-bezier(.2,.78,.2,1),
+    letter-spacing 920ms cubic-bezier(.2,.78,.2,1),
+    text-shadow 700ms ease,
+    opacity 420ms ease;
+}
+body.book-is-open .floating-mathgic-title {
+  top: 17px;
+  left: 25px;
+  transform: translate3d(0,0,0);
+  font-size: clamp(.96rem, 1.2vw, 1.22rem);
+  letter-spacing: .28em;
+  padding-left: .28em;
+  text-shadow: 0 0 15px rgba(242,195,108,.34), 0 0 26px rgba(217,185,121,.13);
+}
+body.focus-mode .floating-mathgic-title { opacity: 0; }
+.grimoire.closed .floating-mathgic-title { opacity: 1; }
+@media (max-width: 700px) {
+  .floating-mathgic-title { top: 14vh; font-size: 2rem; letter-spacing: .23em; padding-left: .23em; }
+  body.book-is-open .floating-mathgic-title { top: 12px; left: 14px; font-size: .88rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .floating-mathgic-title { transition-duration: .01ms !important; }
+}
+
+/* Prologue is a special printed spread: its contents live on the page canvases,
+   so the floating AR panes and external chapter rail step aside. */
+.grimoire.prologue-reading .floating-panel,
+.grimoire.prologue-reading .chapter-rail { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+.grimoire.prologue-reading .book-bottom-bar { opacity: 0; pointer-events: none; }
+.grimoire.prologue-reading .book-3d-stage { cursor: pointer; }
+
+/* The sealed cover is blank leather; the MATHGIC title is the independent floating wordmark. */
+
+
+/* Build 16 final alignment: preserve the Build 11 physical book footprint. */
+.book-3d-stage {
+  left: 50% !important;
+  bottom: 0 !important;
+  width: min(650px, calc(100vw - 700px)) !important;
+  min-width: 390px !important;
+  height: clamp(205px, 26.5vh, 260px) !important;
+  min-height: 0 !important;
+  transform: translateX(-50%) !important;
+}
+@media (max-width: 860px) {
+  .book-3d-stage { width: 96vw !important; min-width: 0 !important; height: 166px !important; }
+}
+@media (max-width: 560px) {
+  .book-3d-stage { width: 96vw !important; height: 145px !important; }
+}
+
+/* The 3D tome is visible behind this transparent accessible hit target. */
+.book-cover {
+  left: 50% !important; bottom: 8px !important;
+  width: min(520px, 92vw) !important;
+  height: min(360px, 42vh) !important;
+  min-height: 160px !important;
+  border: 0 !important; border-radius: 0 !important;
+  background: transparent !important; box-shadow: none !important;
+  transform: translateX(-50%) !important;
+}
+.book-cover:hover, .book-cover:focus-visible {
+  transform: translateX(-50%) !important;
+  background: transparent !important; box-shadow: none !important;
+}
+
+/* The floating wordmark sits just above the sealed tome, then glides to the upper-left. */
+.floating-mathgic-title {
+  top: calc(100vh - min(360px, 42vh) - 62px);
+  left: 50%;
+  transform: translate3d(-50%,0,0);
+}
+body.book-is-open .floating-mathgic-title {
+  top: 17px; left: 25px; transform: translate3d(0,0,0);
+}
+@media (max-width: 700px) {
+  .floating-mathgic-title { top: calc(100vh - min(300px, 39vh) - 48px); font-size: 1.75rem; }
+  body.book-is-open .floating-mathgic-title { top: 12px; left: 14px; font-size: .88rem; }
+  .book-cover { width: 94vw !important; height: min(300px, 39vh) !important; }
+}
+
+/* Focus mode also hides the physical open-book dock while retaining the camera scene. */
+body.focus-mode .book-cover, body.focus-mode .book-bottom-bar { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+
+
+/* Build 16 — Summon Twin button progress is driven by the spell's actual phase. */
+#btn-summon.summon-btn {
+  overflow: visible;
+  --summon-progress: 0%;
+}
+#btn-summon.summon-btn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: auto;
+  bottom: -3px;
+  width: var(--summon-progress);
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(56,189,248,.35), #7dd3fc, #e9d5ff);
+  box-shadow: 0 0 9px rgba(56,189,248,.55);
+  transition: width .08s linear, opacity .2s ease;
+  opacity: .9;
+  pointer-events: none;
+}
+#btn-summon.summon-btn.is-busy {
+  letter-spacing: .035em;
+  color: #f0fbff;
+  text-shadow: 0 0 12px rgba(56,189,248,.52);
+  cursor: progress;
+}
+#btn-summon.summon-btn[data-phase="active"]::after { opacity: .35; }
+#btn-summon.summon-btn:disabled { opacity: .9; }
+
+
+/* ============================================================================
+   BUILD 17 — LARGE READING SPREAD, SEALED FRAMING AND INTERACTIVE WORDMARK
+   ============================================================================ */
+
+/* The main scene projects the one physical book into these viewport references.
+   Chapter Exploration keeps the Build 11 footprint; Prologue and Sealed get
+   dedicated large stages so their overhead views can be fit precisely. */
+.book-3d-stage {
+  left: 50% !important;
+  bottom: 0 !important;
+  width: min(650px, calc(100vw - 700px)) !important;
+  min-width: 390px !important;
+  height: clamp(205px, 26.5vh, 260px) !important;
+  min-height: 0 !important;
+  transform: translateX(-50%) !important;
+}
+.grimoire.prologue-reading .book-3d-stage {
+  width: min(94vw, 1720px) !important;
+  height: 88vh !important;
+  max-height: 950px !important;
+  min-height: 0 !important;
+  bottom: 6vh !important;
+}
+.grimoire.closed .book-3d-stage {
+  width: min(76vw, 920px) !important;
+  height: min(66vh, 690px) !important;
+  min-height: 0 !important;
+  bottom: 4vh !important;
+}
+
+/* Prologue must retain a close-book action even though the AR panes are hidden. */
+.grimoire.prologue-reading .book-bottom-bar {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  position: absolute !important;
+  top: 20px !important;
+  right: 24px !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  z-index: 40 !important;
+}
+.grimoire.prologue-reading .book-bottom-bar .ribbons-bottom,
+.grimoire.prologue-reading .book-bottom-bar .dock-divider { display: none !important; }
+.grimoire.prologue-reading .book-close {
+  color: rgba(238, 220, 181, .82) !important;
+  font-size: .68rem !important;
+  letter-spacing: .16em !important;
+  text-shadow: 0 0 12px rgba(214,168,75,.22) !important;
+}
+
+/* MATHGIC is an accessible, clickable floating title, never printed on the cover. */
+.floating-mathgic-title {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-block;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  z-index: 90 !important;
+  outline: none;
+}
+.floating-mathgic-title:hover,
+.floating-mathgic-title:focus-visible {
+  color: #fff0c8;
+  text-shadow: 0 0 10px rgba(242,195,108,.48), 0 0 22px rgba(217,185,121,.24);
+}
+.grimoire.closed .floating-mathgic-title {
+  top: calc(100vh - min(66vh, 690px) - 4vh - 54px) !important;
+  left: 50% !important;
+  transform: translate3d(-50%, 0, 0) !important;
+  font-size: clamp(2rem, 4vw, 3.45rem) !important;
+}
+body.book-is-open .floating-mathgic-title {
+  top: 18px !important;
+  left: 25px !important;
+  transform: translate3d(0,0,0) !important;
+}
+body.focus-mode .floating-mathgic-title { opacity: 0 !important; pointer-events: none !important; }
+
+/* A transparent open/close hit plane follows the enlarged sealed model only. */
+.grimoire.closed .book-cover {
+  left: 50% !important;
+  bottom: 4vh !important;
+  width: min(76vw, 920px) !important;
+  height: min(66vh, 690px) !important;
+  min-height: 0 !important;
+  z-index: 24 !important;
+}
+@media (max-width: 860px) {
+  .book-3d-stage { width: 96vw !important; min-width: 0 !important; height: 166px !important; }
+  .grimoire.closed .book-3d-stage,
+  .grimoire.closed .book-cover {
+    width: 92vw !important;
+    height: 58vh !important;
+    bottom: 5vh !important;
+  }
+  .grimoire.prologue-reading .book-3d-stage {
+    width: 96vw !important;
+    height: 84vh !important;
+    bottom: 7vh !important;
+  }
+  .grimoire.prologue-reading .book-bottom-bar { top: 14px !important; right: 14px !important; }
+}
+@media (max-width: 560px) {
+  .book-3d-stage { width: 96vw !important; height: 145px !important; }
+  .grimoire.closed .book-3d-stage,
+  .grimoire.closed .book-cover { width: 94vw !important; height: 50vh !important; bottom: 5vh !important; }
+  .grimoire.prologue-reading .book-3d-stage { width: 98vw !important; height: 78vh !important; bottom: 8vh !important; }
+  .grimoire.prologue-reading .book-bottom-bar { top: 10px !important; right: 10px !important; }
+  .grimoire.prologue-reading .book-close { font-size: .55rem !important; }
+}
+
+@media (max-width: 860px) {
+  .grimoire.closed .floating-mathgic-title {
+    top: calc(100vh - 58vh - 5vh - 48px) !important;
+  }
+}
+@media (max-width: 560px) {
+  .grimoire.closed .floating-mathgic-title {
+    top: calc(100vh - 50vh - 5vh - 48px) !important;
+    font-size: clamp(1.65rem, 7vw, 2.15rem) !important;
+  }
+}
+
+
+/* Build 17 — charge guidance exists only while the Polyhedra chapter is open. */
+#info-interaction-tip { display: none !important; }
+body.polyhedra-active #info-interaction-tip { display: block !important; }
+body:not(.polyhedra-active) #info-interaction-tip { display: none !important; }
+
+/* ============================================================================
+   BUILD 22 — AUTHORITATIVE SEALED VIEW / WORDMARK ALIGNMENT BASELINE
+   Keep MATHGIC floating above the book by design; remove legacy conflicting
+   sealed-stage and title sizing rules from earlier build appendices.
+   ============================================================================ */
+.grimoire.closed .book-3d-stage {
+  left: 50% !important;
+  right: auto !important;
+  bottom: 5vh !important;
+  width: min(78vw, 920px) !important;
+  height: min(58vh, 640px) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-height: 640px !important;
+  transform: translateX(-50%) !important;
+  overflow: visible !important;
+}
+.grimoire.closed .book-cover {
+  position: fixed !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: 5vh !important;
+  width: min(52vw, 620px) !important;
+  height: min(58vh, 640px) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: translateX(-50%) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 24 !important;
+}
+.grimoire.closed .book-cover:hover,
+.grimoire.closed .book-cover:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: translateX(-50%) !important;
+}
+.grimoire.closed .floating-mathgic-title {
+  position: fixed !important;
+  top: calc(100vh - min(58vh, 640px) - 5vh - 52px) !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  display: inline-block !important;
+  width: auto !important;
+  max-width: calc(100vw - 28px) !important;
+  padding: 0 0 0 .22em !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: translate3d(-50%, 0, 0) !important;
+  color: #f2d493 !important;
+  font-family: var(--font-display) !important;
+  font-size: clamp(1.8rem, 3.8vw, 2.5rem) !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  letter-spacing: .22em !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+  text-shadow: 0 0 10px rgba(242,195,108,.32), 0 0 24px rgba(217,185,121,.14) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 100 !important;
+  transition:
+    top 950ms cubic-bezier(.2,.78,.2,1),
+    left 950ms cubic-bezier(.2,.78,.2,1),
+    transform 950ms cubic-bezier(.2,.78,.2,1),
+    font-size 950ms cubic-bezier(.2,.78,.2,1),
+    letter-spacing 950ms cubic-bezier(.2,.78,.2,1),
+    color 260ms ease,
+    text-shadow 260ms ease !important;
+}
+.grimoire.closed .floating-mathgic-title:hover,
+.grimoire.closed .floating-mathgic-title:focus-visible {
+  color: #fff0c8 !important;
+  text-shadow: 0 0 12px rgba(242,195,108,.52), 0 0 26px rgba(217,185,121,.22) !important;
+}
+body.book-is-open .floating-mathgic-title {
+  top: 18px !important;
+  left: 25px !important;
+  right: auto !important;
+  transform: translate3d(0,0,0) !important;
+  font-size: clamp(.96rem, 1.2vw, 1.22rem) !important;
+  line-height: 1 !important;
+  letter-spacing: .28em !important;
+  padding-left: .28em !important;
+  pointer-events: auto !important;
+  z-index: 100 !important;
+}
+body.focus-mode .floating-mathgic-title {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.grimoire.open .book-cover {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+@media (max-width: 860px) {
+  .grimoire.closed .book-3d-stage {
+    width: 88vw !important;
+    height: 58vh !important;
+    bottom: 5vh !important;
+  }
+  .grimoire.closed .book-cover {
+    width: 58vw !important;
+    height: 58vh !important;
+    bottom: 5vh !important;
+  }
+  .grimoire.closed .floating-mathgic-title {
+    top: calc(100vh - 58vh - 5vh - 48px) !important;
+    font-size: clamp(1.65rem, 4.6vw, 2.05rem) !important;
+  }
+  body.book-is-open .floating-mathgic-title {
+    top: 12px !important;
+    left: 14px !important;
+    font-size: .9rem !important;
+  }
+}
+@media (max-width: 560px) {
+  .grimoire.closed .book-3d-stage {
+    width: 94vw !important;
+    height: 54vh !important;
+    bottom: 6vh !important;
+  }
+  .grimoire.closed .book-cover {
+    width: 94vw !important;
+    height: 54vh !important;
+    bottom: 6vh !important;
+  }
+  .grimoire.closed .floating-mathgic-title {
+    top: calc(100vh - 54vh - 6vh - 44px) !important;
+    font-size: clamp(1.5rem, 6.5vw, 1.9rem) !important;
+    letter-spacing: .18em !important;
+    padding-left: .18em !important;
+  }
+}
+
+/* ============================================================================
+   BUILD 22 — unified chapter interface (Prologue is the intentional exception)
+   Every non-Prologue chapter shares the same knowledge/control rhythm, spacing,
+   typography and control language. Only content and accent colour vary.
+   ============================================================================ */
+#grimoire:not(.prologue-reading) .chapter-page {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(12px, 1.25vw, 17px);
+  min-width: 0;
+  padding: 8px 3px 22px;
+  color: rgba(235, 239, 246, .92);
+  font-family: var(--font-body);
+}
+#grimoire:not(.prologue-reading) .chapter-page-overline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 18px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 30%, transparent);
+  color: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 84%, white);
+  font: 600 .55rem/1.2 var(--font-mono);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  transform: translateZ(18px);
+}
+.chapter-page-overline-label { min-width: 0; }
+.chapter-page-overline-index { flex: 0 0 auto; color: rgba(215, 221, 232, .52); white-space: nowrap; }
+#grimoire:not(.prologue-reading) .chapter-page .page-title {
+  margin: 0;
+  color: #f4ead5;
+  font: 600 clamp(1.16rem, 1.65vw, 1.55rem)/1.12 var(--font-display);
+  letter-spacing: .035em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 18%, transparent);
+  transform: translateZ(24px);
+}
+#grimoire:not(.prologue-reading) .chapter-page .legend {
+  max-width: 48ch;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: rgba(218, 225, 236, .82);
+  font: 400 .84rem/1.62 var(--font-body);
+  font-style: normal;
+  letter-spacing: .005em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .34);
+  transform: translateZ(12px);
+}
+#grimoire:not(.prologue-reading) .chapter-page .concept-formula {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px 0 2px;
+  padding: 11px 0 12px;
+  border-top: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 28%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--grimoire-secondary) 24%, transparent);
+  color: #f5e9cb;
+  font-size: .92rem;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 24%, transparent);
+  transform: translateZ(26px);
+}
+#grimoire:not(.prologue-reading) .chapter-page .concept-note {
+  max-width: 46ch;
+  margin: 0;
+  padding: 0 0 0 11px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--grimoire-secondary) 52%, transparent);
+  color: rgba(190, 207, 224, .78);
+  font: 400 .72rem/1.52 var(--font-body);
+  transform: translateZ(12px);
+}
+#grimoire:not(.prologue-reading) .chapter-page .spell-live-readout {
+  max-width: 48ch;
+  margin: 4px 0 0;
+  padding: 10px 0 0 11px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 60%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: rgba(230, 232, 241, .9);
+  font: 400 .72rem/1.55 var(--font-mono);
+  transform: translateZ(18px);
+}
+#grimoire:not(.prologue-reading) .chapter-page .spell-live-readout .katex { color: inherit; }
+
+/* Knowledge page: the Platonic-solid chapter follows the exact same typographic hierarchy. */
+#grimoire .polyhedra-page .solid-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+}
+#grimoire .polyhedra-page .element-pill {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--chapter-accent, var(--grimoire-accent));
+  font: 600 .58rem/1.2 var(--font-mono);
+  letter-spacing: .16em;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 34%, transparent);
+}
+#grimoire .polyhedra-page .solid-header h2 { margin: 0; }
+#grimoire .polyhedra-page .philosophy-quote { font-style: normal; }
+#grimoire .polyhedra-page .euler-box,
+#grimoire .polyhedra-page .chapter-metric-block {
+  margin: 3px 0 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 30%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.chapter-section-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.chapter-section-kicker {
+  color: color-mix(in srgb, var(--grimoire-secondary) 72%, white);
+  font: 600 .51rem/1.2 var(--font-mono);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+.chapter-section-title {
+  color: rgba(225, 232, 242, .76);
+  font: 500 .74rem/1.3 var(--font-display);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.euler-formula-line {
+  width: fit-content;
+  margin: 1px 0 12px;
+  color: #f7e6b8;
+  font-size: 1.16rem;
+  text-shadow: 0 0 16px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 30%, transparent);
+}
+#grimoire .polyhedra-page .euler-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(3px, .55vw, 8px);
+}
+#grimoire .polyhedra-page .euler-stat {
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+#grimoire .polyhedra-page .stat-val {
+  color: #f4ead5;
+  font: 500 clamp(1rem, 1.4vw, 1.28rem)/1.15 var(--font-mono);
+}
+#grimoire .polyhedra-page .stat-lbl {
+  color: rgba(202, 211, 225, .54);
+  font: 500 .49rem/1.35 var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+#grimoire .polyhedra-page .euler-op {
+  color: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 76%, white);
+  font-size: .76rem;
+}
+#grimoire .polyhedra-page .euler-stat.result .stat-val { color: var(--chapter-accent, var(--grimoire-accent)); }
+#grimoire .polyhedra-page .face-shape-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(215, 225, 238, .12);
+  color: rgba(195, 208, 224, .72);
+  font: 400 .63rem/1.45 var(--font-body);
+  text-align: left;
+}
+
+/* Controls page: identical rhythm for Polyhedra, Golden Ratio, Projection, Infinity and Non-Euclidean. */
+#grimoire:not(.prologue-reading) .chapter-controls-page .page-controls {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(13px, 1.4vw, 19px);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-group,
+#grimoire:not(.prologue-reading) .chapter-controls-page .spell-control-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 10px 0 13px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 22%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: translateZ(14px);
+  transition: opacity .28s ease, transform .36s var(--ease-magic), border-color .28s ease;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-group:hover,
+#grimoire:not(.prologue-reading) .chapter-controls-page .spell-control-row:hover {
+  border-color: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 48%, transparent);
+  background: transparent;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-group:focus-within { transform: translateZ(24px); }
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  color: #e9e2d3;
+  font: 600 .63rem/1.4 var(--font-display);
+  letter-spacing: .085em;
+  text-transform: uppercase;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-header label {
+  color: rgba(232, 226, 213, .88);
+  font: inherit;
+  letter-spacing: inherit;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-val {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--chapter-accent, var(--grimoire-accent));
+  font: 500 .64rem var(--font-mono);
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-hint {
+  margin: 0;
+  color: rgba(193, 205, 220, .7);
+  font: 400 .68rem/1.5 var(--font-body);
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page input[type="range"] {
+  height: 3px;
+  margin: 7px 0 3px;
+  background: linear-gradient(90deg, var(--chapter-accent, var(--grimoire-accent)) var(--p), rgba(255,255,255,.15) var(--p));
+  box-shadow: none;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page input[type="range"]:hover,
+#grimoire:not(.prologue-reading) .chapter-controls-page input[type="range"]:active { box-shadow: 0 0 10px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 24%, transparent); }
+#grimoire:not(.prologue-reading) .chapter-controls-page input[type="range"]::-webkit-slider-thumb {
+  width: 12px; height: 12px; border-radius: 50%; transform: none;
+  background: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 82%, white);
+  border: 1px solid rgba(8, 12, 22, .85);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 54%, transparent);
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.18); }
+#grimoire:not(.prologue-reading) .chapter-controls-page input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%; transform: none;
+  background: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 82%, white);
+  border: 1px solid rgba(8, 12, 22, .85);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 54%, transparent);
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .action-btn,
+#grimoire:not(.prologue-reading) .chapter-controls-page .choice-btn {
+  width: fit-content;
+  min-width: 0;
+  margin: 2px 0 0;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 52%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 78%, white);
+  font: 600 .61rem/1.35 var(--font-display);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  text-align: left;
+  transition: color .24s ease, border-color .24s ease, text-shadow .24s ease, transform .24s ease;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .action-btn:hover,
+#grimoire:not(.prologue-reading) .chapter-controls-page .choice-btn:hover,
+#grimoire:not(.prologue-reading) .chapter-controls-page .choice-btn.active {
+  color: #fff4d2;
+  border-bottom-color: var(--chapter-accent, var(--grimoire-accent));
+  background: transparent;
+  box-shadow: none;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--chapter-accent, var(--grimoire-accent)) 34%, transparent);
+  transform: translateY(-1px);
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .choice-glider { display: none !important; }
+#grimoire:not(.prologue-reading) .chapter-controls-page .dual-block {
+  margin-top: 1px;
+  padding-top: 12px;
+}
+
+/* Shared chapter-content transitions: all chapter pairs use the same timing and staging. */
+#grimoire:not(.prologue-reading) .page-inner.content-leaving {
+  opacity: 0;
+  transform: translate3d(0, 16px, -72px) rotateY(2deg);
+  filter: blur(1.2px);
+}
+#grimoire:not(.prologue-reading) .page-inner.content-enter {
+  animation: build22ChapterPageEnter .72s cubic-bezier(.18,.78,.22,1) both;
+}
+@keyframes build22ChapterPageEnter {
+  0% { opacity: 0; transform: translate3d(0, 22px, -70px) rotateY(-2deg); filter: blur(1.3px); }
+  72% { opacity: 1; transform: translate3d(0, -2px, 4px) rotateY(.35deg); filter: blur(.12px); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) rotateY(0); filter: blur(0); }
+}
+#grimoire:not(.prologue-reading) .panel-chapter-heading.content-enter {
+  animation-duration: .58s;
+}
+#grimoire:not(.prologue-reading) .panel-content-viewport .euler-box,
+#grimoire:not(.prologue-reading) .panel-content-viewport .control-group,
+#grimoire:not(.prologue-reading) .panel-content-viewport .spell-live-readout {
+  filter: none;
+}
+
+@media (max-width: 860px) {
+  #grimoire:not(.prologue-reading) .chapter-page { gap: 9px; padding-top: 3px; }
+  #grimoire:not(.prologue-reading) .chapter-page .page-title { font-size: clamp(.92rem, 2.2vw, 1.12rem); }
+  #grimoire:not(.prologue-reading) .chapter-page .legend { font-size: .68rem; line-height: 1.45; }
+  #grimoire:not(.prologue-reading) .chapter-page .concept-formula { padding: 7px 0; font-size: .76rem; }
+  #grimoire:not(.prologue-reading) .chapter-controls-page .control-group { gap: 5px; padding: 7px 0 9px; }
+  #grimoire:not(.prologue-reading) .chapter-controls-page .control-header { font-size: .55rem; }
+  #grimoire:not(.prologue-reading) .chapter-controls-page .control-hint { font-size: .58rem; }
+}
+@media (max-width: 560px) {
+  #grimoire:not(.prologue-reading) .chapter-page-overline { font-size: .46rem; }
+  #grimoire:not(.prologue-reading) .chapter-page .page-title { font-size: .88rem; }
+  #grimoire:not(.prologue-reading) .chapter-page .legend { font-size: .61rem; }
+  #grimoire:not(.prologue-reading) .chapter-controls-page .action-btn,
+  #grimoire:not(.prologue-reading) .chapter-controls-page .choice-btn { font-size: .52rem; }
+}
+
+
+/* Build 22 refinement: identical spatial footprint for every non-Prologue chapter. */
+#grimoire:not(.prologue-reading) .floating-left,
+#grimoire:not(.prologue-reading) .floating-right {
+  width: clamp(258px, 21vw, 340px);
+  max-height: min(76vh, 780px);
+}
+#grimoire:not(.prologue-reading) .floating-left .panel-content-viewport,
+#grimoire:not(.prologue-reading) .floating-right .panel-content-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(62vh, 650px);
+  scrollbar-gutter: stable;
+}
+#grimoire:not(.prologue-reading) .floating-left .panel-chapter-heading,
+#grimoire:not(.prologue-reading) .floating-right .panel-chapter-heading {
+  min-height: 76px;
+  padding: 8px 3px 13px;
+  gap: 13px;
+}
+#grimoire:not(.prologue-reading) .floating-left .panel-crown,
+#grimoire:not(.prologue-reading) .floating-right .panel-crown {
+  min-height: 22px;
+  padding: 0 2px 6px !important;
+}
+#grimoire:not(.prologue-reading) .chapter-page-overline-index {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+#grimoire:not(.prologue-reading) .chapter-page .page-title,
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-header {
+  overflow-wrap: anywhere;
+}
+#grimoire:not(.prologue-reading) .chapter-controls-page .control-group[hidden],
+#grimoire:not(.prologue-reading) .chapter-page [hidden] {
+  display: none !important;
+}
+
+@media (max-width: 1180px) {
+  #grimoire:not(.prologue-reading) .floating-left,
+  #grimoire:not(.prologue-reading) .floating-right {
+    width: 242px;
+  }
+}
+@media (max-width: 860px) {
+  #grimoire:not(.prologue-reading) .floating-left,
+  #grimoire:not(.prologue-reading) .floating-right {
+    width: calc(50vw - 58px);
+    max-height: 34vh;
+  }
+  #grimoire:not(.prologue-reading) .floating-left .panel-chapter-heading,
+  #grimoire:not(.prologue-reading) .floating-right .panel-chapter-heading {
+    min-height: 58px;
+    gap: 8px;
+    padding: 5px 0 7px;
+  }
+  #grimoire:not(.prologue-reading) .floating-left .panel-content-viewport,
+  #grimoire:not(.prologue-reading) .floating-right .panel-content-viewport {
+    max-height: calc(34vh - 90px);
+  }
+}
+@media (max-width: 560px) {
+  #grimoire:not(.prologue-reading) .floating-left,
+  #grimoire:not(.prologue-reading) .floating-right {
+    width: calc(50vw - 34px);
+    max-height: 30vh;
+  }
+  #grimoire:not(.prologue-reading) .floating-left .panel-chapter-heading,
+  #grimoire:not(.prologue-reading) .floating-right .panel-chapter-heading {
+    min-height: 48px;
+    gap: 6px;
+    padding: 5px 0 6px;
+  }
+  #grimoire:not(.prologue-reading) .floating-left .panel-crown,
+  #grimoire:not(.prologue-reading) .floating-right .panel-crown {
+    min-height: 17px;
+    padding-bottom: 1px !important;
+    gap: 5px;
+  }
+  #grimoire:not(.prologue-reading) .floating-left .panel-content-viewport,
+  #grimoire:not(.prologue-reading) .floating-right .panel-content-viewport {
+    max-height: calc(30vh - 72px);
+  }
+}
+
+/* ============================================================================
+   BUILD 23 — SEALED FANTASY ATMOSPHERE + PROLOGUE CLOSE CONTROL
+   The wordmark remains a floating title above the physical book. The ambient
+   layers are CSS-only, subtle and pointer-transparent (no extra WebGL pass).
+   ============================================================================ */
+.grimoire.closed {
+  isolation: isolate;
+}
+.grimoire.closed::before,
+.grimoire.closed::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.grimoire.closed::before {
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 50% 66%, rgba(123, 78, 155, .16) 0%, rgba(55, 42, 88, .10) 27%, transparent 54%),
+    radial-gradient(ellipse at 50% 72%, rgba(214, 168, 75, .105) 0%, transparent 38%),
+    radial-gradient(ellipse at 50% 48%, transparent 35%, rgba(4, 7, 17, .22) 100%);
+  opacity: .96;
+}
+.grimoire.closed::after {
+  z-index: 1;
+  background-image:
+    radial-gradient(circle at 13% 22%, rgba(245, 220, 166, .52) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 82% 18%, rgba(154, 190, 255, .42) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 21% 74%, rgba(231, 194, 126, .36) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 76% 78%, rgba(203, 177, 255, .35) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 91% 48%, rgba(245, 220, 166, .30) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 8% 53%, rgba(154, 190, 255, .28) 0 1px, transparent 1.8px);
+  opacity: .34;
+  animation: sealed-arcane-drift 18s ease-in-out infinite alternate;
+}
+.grimoire.closed .book-3d-stage {
+  filter: drop-shadow(0 24px 34px rgba(0, 0, 0, .62));
+}
+.grimoire.closed .floating-mathgic-title {
+  z-index: 100 !important;
+  text-shadow:
+    0 0 8px rgba(242, 195, 108, .36),
+    0 0 22px rgba(217, 185, 121, .22),
+    0 2px 3px rgba(0, 0, 0, .72) !important;
+}
+@keyframes sealed-arcane-drift {
+  from { opacity: .22; filter: blur(0); }
+  to { opacity: .42; filter: blur(.35px); }
+}
+
+/* Prologue is a printed spread: put its single close action at bottom-right. */
+.grimoire.prologue-reading .book-bottom-bar {
+  position: fixed !important;
+  top: auto !important;
+  right: max(22px, env(safe-area-inset-right)) !important;
+  bottom: max(22px, env(safe-area-inset-bottom)) !important;
+  left: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 120 !important;
+}
+.grimoire.prologue-reading .book-close {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  padding: 9px 2px !important;
+  color: rgba(239, 222, 188, .88) !important;
+  font-size: .66rem !important;
+  letter-spacing: .18em !important;
+  text-shadow: 0 0 12px rgba(214, 168, 75, .22) !important;
+}
+.grimoire.prologue-reading .book-close:hover,
+.grimoire.prologue-reading .book-close:focus-visible {
+  color: #fff2ca !important;
+  text-shadow: 0 0 16px rgba(244, 208, 130, .48) !important;
+}
+@media (max-width: 700px) {
+  .grimoire.prologue-reading .book-bottom-bar {
+    right: max(14px, env(safe-area-inset-right)) !important;
+    bottom: max(14px, env(safe-area-inset-bottom)) !important;
+  }
+  .grimoire.prologue-reading .book-close { font-size: .56rem !important; letter-spacing: .13em !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grimoire.closed::after { animation: none; }
+}
+
+/* Prologue Close Book lives outside the transformed book dock so it can anchor
+   to the actual viewport corner on every display size. */
+.book-close-prologue {
+  display: none;
+  position: fixed;
+  z-index: 140;
+  right: max(22px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  align-items: center;
+  gap: 9px;
+  padding: 9px 2px;
+  border: 0;
+  background: transparent;
+  color: rgba(239, 222, 188, .88);
+  font: 600 .66rem var(--font-display);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(214, 168, 75, .22);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color .24s ease, text-shadow .24s ease, transform .24s ease;
+}
+.book-close-prologue .close-glyph { color: #e7c47c; }
+.book-close-prologue:hover,
+.book-close-prologue:focus-visible {
+  color: #fff2ca;
+  text-shadow: 0 0 16px rgba(244, 208, 130, .48);
+  transform: translateY(-2px);
+  outline: none;
+}
+.grimoire.prologue-reading .book-bottom-bar {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.grimoire.prologue-reading .book-close-prologue {
+  display: inline-flex;
+}
+@media (max-width: 700px) {
+  .grimoire.prologue-reading .book-close-prologue {
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    font-size: .56rem;
+    letter-spacing: .13em;
+  }
+}

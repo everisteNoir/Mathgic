@@ -5,20 +5,25 @@ import * as THREE from 'three';
  * It shares the Engine camera, renderer and depth buffer; only the page-turn deforms geometry.
  */
 export class CurvedBook3D {
-  constructor(engine, container, { onPrev, onNext } = {}) {
+  constructor(engine, container, { onPrev, onNext, onChapterSelect } = {}) {
     this.engine = engine;
     this.container = container;
     this.onPrev = onPrev;
     this.onNext = onNext;
+    this.onChapterSelect = onChapterSelect;
     this.scene = engine.scene;
     this.camera = engine.camera;
     this.renderer = engine.renderer;
 
     this.opened = false;
+    this.focusHidden = false;
+    this.poseMode = 'chapter';
+    this._poseInitialized = false;
+    // Cover opening/closing and page turns are advanced by Engine.start() so the
+    // book never runs a second requestAnimationFrame loop beside the renderer.
+    this.coverTransition = null;
     this.theme = { id: 'elemental', primary: '#ff5722', secondary: '#fbbf24' };
     this.flipState = null;
-    this.animationFrame = null;
-    this.flipStartedAt = null;
 
     // Recreate the exact relative viewing pose from Build 11's dedicated book camera.
     // The old camera used FOV 34°, distance 8.95, pitch 0.34 rad and looked at y=0.44.
@@ -56,20 +61,49 @@ export class CurvedBook3D {
     this.BOARD_W = 4.34;
     this.BOARD_D = 5.14;
     this.BOARD_THICK = 0.095;
+    this.FRONT_COVER_LIFT = 0.105;
 
     this.archScale = 0.80;
     this.coverWarpScale = 1.38;
 
     this._initScene();
     this._buildBook();
+    // Cache the front-cover's open and folded profiles once. During animation
+    // the same geometry morphs between them; no second book model is created.
+    this._prepareFrontCoverMorph();
     this._rebuildAllGeometry();
-    this.bookGroup.visible = false;
-    this.bookLights.visible = false;
+    this._cachePaperGeometryStates();
+    this._setPaperFlatten(1);
+    this._poseCenterBlend = 0;
+    this._poseCenters = { sealed: new THREE.Vector3(), open: new THREE.Vector3() };
+    this._anchorCenterLocal = new THREE.Vector3();
+    this._anchorCenterOffset = new THREE.Vector3();
+    this._anchorLocalPoint = new THREE.Vector3();
+    this._anchorWorldPoint = new THREE.Vector3();
+    this._anchorNormal = new THREE.Vector3();
+    this._anchorRight = new THREE.Vector3();
+    this._anchorPageDepthAxis = new THREE.Vector3();
+    this._anchorPageWorldPoint = new THREE.Vector3();
+    this._anchorPageCameraPoint = new THREE.Vector3();
+    this._anchorStageCameraPoint = new THREE.Vector3();
+    this._anchorChapterPose = new THREE.Quaternion();
+    this._anchorTargetPose = new THREE.Quaternion();
+    this._anchorBasisMatrix = new THREE.Matrix4();
+    this._anchorZero = new THREE.Vector3();
+    this._cacheBookPoseCenters();
+    // One physical BookGroup serves every state. Sealed mode is applied as an
+    // explicit pose (including which hidden back-side parts are covered), not
+    // by keeping both open-spread halves visible under the front cover.
+    this._applySealedPose();
+    this.bookLights.visible = true;
     // Keep culling per mesh and disable the world fog on the close-up paper,
     // otherwise the Engine's deep-space fog would wash the book out.
     this.bookGroup.traverse((object) => {
       if (!object.isMesh) return;
-      object.frustumCulled = true;
+      // The book is camera-anchored and its page geometry morphs between cached
+      // profiles. Disable per-mesh frustum rejection: a stale local bound must
+      // never make the whole grimoire disappear after the camera eases.
+      object.frustumCulled = false;
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       materials.filter(Boolean).forEach((material) => { material.fog = false; });
     });
@@ -189,7 +223,7 @@ export class CurvedBook3D {
   _createPaperStackMaterial() {
     // A single warm paper tone: no canvas texture, stripes or decorative pattern.
     return new THREE.MeshStandardMaterial({
-      color: '#ddd1b8',
+      color: '#111a31',
       roughness: 0.91,
       metalness: 0
     });
@@ -400,6 +434,212 @@ export class CurvedBook3D {
     return { texture, render };
   }
 
+
+  /** Paint a readable, interactive table of contents directly onto each physical page. */
+  _createContentsPageCanvas(isLeftPage) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1280;
+    const ctx = canvas.getContext('2d');
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+
+    const entries = isLeftPage
+      ? [
+          { id: 'prologue', number: '01', symbol: 'α', title: 'PROLOGUE', subtitle: 'The map of this grimoire' },
+          { id: 'polyhedra', number: '02', symbol: 'Δ', title: 'POLYHEDRA', subtitle: 'The five Platonic solids' },
+          { id: 'golden-ratio', number: '03', symbol: 'φ', title: 'GOLDEN RATIO', subtitle: 'Proportion, spirals and growth' }
+        ]
+      : [
+          { id: 'projection', number: '04', symbol: 'π', title: 'PROJECTION', subtitle: 'Dimensions, sections and shadows' },
+          { id: 'infinity', number: '05', symbol: 'ℵ', title: 'INFINITY', subtitle: 'Cantor and the hierarchy of infinities' },
+          { id: 'non-euclidean', number: '06', symbol: 'κ', title: 'NON-EUCLIDEAN', subtitle: 'Curvature and alternative spaces' }
+        ];
+
+    const zones = [];
+    let redrawCount = 0;
+    const render = (hoverId = null, activeId = null) => {
+      redrawCount++;
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, '#17213a');
+      bg.addColorStop(0.52, '#111a31');
+      bg.addColorStop(1, '#0d162b');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // Restrained page grain and printed double rules, never animated.
+      let seed = isLeftPage ? 913 : 1729;
+      for (let i = 0; i < 900; i++) {
+        seed = (seed * 16807) % 2147483647;
+        const x = (seed / 2147483647) * W;
+        seed = (seed * 16807) % 2147483647;
+        const y = (seed / 2147483647) * H;
+        ctx.fillStyle = `rgba(236,220,184,${0.012 + (seed % 18) / 1800})`;
+        ctx.fillRect(x, y, 1.2, 1.2);
+      }
+      const gold = '#d9b979';
+      ctx.strokeStyle = 'rgba(217,185,121,.56)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(58, 58, W - 116, H - 116);
+      ctx.strokeStyle = 'rgba(217,185,121,.22)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(76, 76, W - 152, H - 152);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(217,185,121,.82)';
+      ctx.font = '500 24px Georgia, serif';
+      ctx.letterSpacing = '8px';
+      ctx.fillText(isLeftPage ? 'MATHGIC  ·  LIBER I' : 'MATHGIC  ·  LIBER II', W / 2, 148);
+      ctx.fillStyle = '#f0dfbd';
+      ctx.font = '600 48px Georgia, serif';
+      ctx.letterSpacing = '3px';
+      ctx.fillText(isLeftPage ? 'TABLE OF CONTENTS' : 'THE JOURNEY CONTINUES', W / 2, 238);
+      ctx.strokeStyle = 'rgba(217,185,121,.58)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(180, 282); ctx.lineTo(W - 180, 282); ctx.stroke();
+      ctx.fillStyle = 'rgba(226,211,181,.62)';
+      ctx.font = 'italic 25px Georgia, serif';
+      ctx.letterSpacing = '1px';
+      ctx.fillText(isLeftPage ? 'Select a chapter to begin your exploration.' : 'Choose the next world to unfold.', W / 2, 330);
+
+      zones.length = 0;
+      const rowTops = [410, 640, 870];
+      entries.forEach((entry, i) => {
+        const y = rowTops[i];
+        const selected = activeId === entry.id;
+        const hovered = hoverId === entry.id;
+        if (hovered || selected) {
+          const glow = ctx.createLinearGradient(116, y - 48, W - 116, y + 130);
+          glow.addColorStop(0, hovered ? 'rgba(217,185,121,.16)' : 'rgba(217,185,121,.10)');
+          glow.addColorStop(1, 'rgba(217,185,121,0)');
+          ctx.fillStyle = glow;
+          ctx.fillRect(104, y - 62, W - 208, 174);
+        }
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(217,185,121,.68)';
+        ctx.font = '500 25px Georgia, serif';
+        ctx.fillText(entry.number, 134, y + 8);
+        ctx.fillStyle = hovered || selected ? '#f8e5b6' : '#d9b979';
+        ctx.font = '52px Georgia, serif';
+        ctx.fillText(entry.symbol, 238, y + 18);
+        ctx.fillStyle = hovered || selected ? '#fff0d0' : '#e8dcc2';
+        ctx.font = '600 34px Georgia, serif';
+        ctx.letterSpacing = '2px';
+        ctx.fillText(entry.title, 326, y + 2);
+        ctx.fillStyle = 'rgba(224,214,194,.68)';
+        ctx.font = 'italic 24px Georgia, serif';
+        ctx.letterSpacing = '.2px';
+        ctx.fillText(entry.subtitle, 326, y + 48);
+        ctx.strokeStyle = hovered || selected ? 'rgba(217,185,121,.72)' : 'rgba(217,185,121,.28)';
+        ctx.lineWidth = hovered ? 3 : 1.5;
+        ctx.beginPath(); ctx.moveTo(132, y + 91); ctx.lineTo(W - 132, y + 91); ctx.stroke();
+        // UV normalized zones correspond to the three printed rows. A wide x-range
+        // makes selection forgiving while still mapping directly to the page surface.
+        zones.push({ id: entry.id, minY: (y - 78) / H, maxY: (y + 112) / H, minX: 0.055, maxX: 0.945 });
+      });
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(217,185,121,.62)';
+      ctx.font = 'italic 22px Georgia, serif';
+      ctx.fillText(isLeftPage ? 'Touch an inscription to open its chapter' : 'Six paths · One living grimoire', W / 2, 1130);
+      ctx.fillStyle = 'rgba(217,185,121,.46)';
+      ctx.font = '20px Georgia, serif';
+      ctx.fillText(isLeftPage ? '—  I  —' : '—  II  —', W / 2, 1180);
+      texture.needsUpdate = true;
+    };
+
+    render();
+    return {
+      texture,
+      zones,
+      render,
+      get redrawCount() { return redrawCount; },
+      chapterAt(pagePoint) {
+        if (!pagePoint) return null;
+        // pagePoint is normalized in the book's local frame, with (0,0) at
+        // the outer/top corner of the printed page. Using the physical hit
+        // point avoids V/flipY differences between CanvasTexture and raycaster UVs.
+        const x = THREE.MathUtils.clamp(pagePoint.x, 0, 1);
+        const y = THREE.MathUtils.clamp(pagePoint.y, 0, 1);
+        return zones.find((zone) => x >= zone.minX && x <= zone.maxX && y >= zone.minY && y <= zone.maxY)?.id || null;
+      },
+      rowForChapterId(chapterId) {
+        return zones.findIndex((zone) => zone.id === chapterId);
+      }
+    };
+  }
+
+  /** Add a cheap page-surface hover highlight without repainting CanvasTexture. */
+  _installContentsHighlight(material) {
+    const rowStarts = new THREE.Vector3(332 / 1280, 562 / 1280, 792 / 1280);
+    const rowEnds = new THREE.Vector3(522 / 1280, 752 / 1280, 982 / 1280);
+    const uniforms = {
+      hoverRow: { value: -1 },
+      activeRow: { value: -1 },
+      enabled: { value: 0 },
+      rowStarts: { value: rowStarts },
+      rowEnds: { value: rowEnds },
+      glowColor: { value: new THREE.Color('#e6c47d') }
+    };
+    material.userData.contentsHighlightUniforms = uniforms;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uTocHoverRow = uniforms.hoverRow;
+      shader.uniforms.uTocActiveRow = uniforms.activeRow;
+      shader.uniforms.uTocEnabled = uniforms.enabled;
+      shader.uniforms.uTocRowStarts = uniforms.rowStarts;
+      shader.uniforms.uTocRowEnds = uniforms.rowEnds;
+      shader.uniforms.uTocGlowColor = uniforms.glowColor;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+uniform float uTocHoverRow;
+uniform float uTocActiveRow;
+uniform float uTocEnabled;
+uniform vec3 uTocRowStarts;
+uniform vec3 uTocRowEnds;
+uniform vec3 uTocGlowColor;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+#ifdef USE_UV
+if (uTocEnabled > 0.5) {
+  float tocY = 1.0 - vMapUv.y;
+  float tocX = vMapUv.x;
+  float r0 = step(uTocRowStarts.x, tocY) * (1.0 - step(uTocRowEnds.x, tocY));
+  float r1 = step(uTocRowStarts.y, tocY) * (1.0 - step(uTocRowEnds.y, tocY));
+  float r2 = step(uTocRowStarts.z, tocY) * (1.0 - step(uTocRowEnds.z, tocY));
+  float h0 = 1.0 - step(0.5, abs(uTocHoverRow - 0.0));
+  float h1 = 1.0 - step(0.5, abs(uTocHoverRow - 1.0));
+  float h2 = 1.0 - step(0.5, abs(uTocHoverRow - 2.0));
+  float a0 = 1.0 - step(0.5, abs(uTocActiveRow - 0.0));
+  float a1 = 1.0 - step(0.5, abs(uTocActiveRow - 1.0));
+  float a2 = 1.0 - step(0.5, abs(uTocActiveRow - 2.0));
+  float rowGlow = max(max(r0 * (h0 * 0.82 + a0 * 0.34), r1 * (h1 * 0.82 + a1 * 0.34)), r2 * (h2 * 0.82 + a2 * 0.34));
+  float xFade = smoothstep(0.055, 0.14, tocX) * (1.0 - smoothstep(0.86, 0.945, tocX));
+  diffuseColor.rgb = mix(diffuseColor.rgb, uTocGlowColor, rowGlow * xFade * 0.20);
+}
+#endif`
+      );
+      material.userData.contentsHighlightShader = shader;
+    };
+    material.customProgramCacheKey = () => 'mathgic-toc-highlight-v1';
+  }
+
+  _setContentsHighlight(chapterId, pageMesh = null) {
+    const leftRow = pageMesh === this.leftPageMesh && chapterId
+      ? this.contentsLeftCanvas.rowForChapterId(chapterId) : -1;
+    const rightRow = pageMesh === this.rightPageMesh && chapterId
+      ? this.contentsRightCanvas.rowForChapterId(chapterId) : -1;
+    const leftUniforms = this.leftPageMat?.userData?.contentsHighlightUniforms;
+    const rightUniforms = this.rightPageMat?.userData?.contentsHighlightUniforms;
+    if (leftUniforms) leftUniforms.hoverRow.value = leftRow;
+    if (rightUniforms) rightUniforms.hoverRow.value = rightRow;
+  }
+
   /* =========================================================================
      3D GEOMETRY: BEVELED HARDCOVER BOARDS, HOLLOW SPINE & CURVED PAGES
      ========================================================================= */
@@ -488,6 +728,9 @@ export class CurvedBook3D {
     // Kept as a direct child of the shared Engine scene so real depth testing
     // decides when the mathematical solid occludes the book.
     this.scene.add(this.bookGroup);
+    this.openBookGroup = new THREE.Group();
+    this.openBookGroup.name = 'OpenGrimoireSpread';
+    this.bookGroup.add(this.openBookGroup);
 
     const clothTex = this._createCoverClothTextures();
     this.coverOuterMat = new THREE.MeshStandardMaterial({
@@ -495,7 +738,10 @@ export class CurvedBook3D {
       bumpMap: clothTex.bumpMap,
       bumpScale: 0.014,
       roughness: 0.76,
-      metalness: 0.1
+      metalness: 0.1,
+      // The outer cloth must remain visible through the final hinge pose even
+      // when a platform's winding/back-face convention differs.
+      side: THREE.DoubleSide
     });
 
     const endpaperLeftMat = new THREE.MeshStandardMaterial({
@@ -509,72 +755,129 @@ export class CurvedBook3D {
 
     this.leftBoardGroup = this._createBeveledBoardMesh(-1, endpaperLeftMat);
     this.rightBoardGroup = this._createBeveledBoardMesh(1, endpaperRightMat);
-    this.bookGroup.add(this.leftBoardGroup, this.rightBoardGroup);
-    this.bookGroup.add(this._createSpineMesh());
-    this.bookGroup.add(this._createHeadbandMesh());
 
-    // Thick layered paper blocks under the curved sheets
+    // Reading orientation: the left board is the FRONT cover. It swings across
+    // the spread onto the right/back board. Its outer cloth face is the lower
+    // shell in the open pose and therefore faces the camera once folded over.
+    this.frontCoverPivot = new THREE.Group();
+    this.frontCoverPivot.name = 'FrontCoverHinge';
+    this.frontCoverPivot.position.set(0, 0.26, 0);
+    this.leftBoardGroup.position.y = -0.26;
+    this.frontCoverPivot.add(this.leftBoardGroup);
+    // The right board is the stationary back cover.
+    this.openBookGroup.add(this.frontCoverPivot, this.rightBoardGroup);
+    this.openBookGroup.add(this._createSpineMesh());
+    this.openBookGroup.add(this._createHeadbandMesh());
+
+    // The left half of the paper block folds together with the front cover;
+    // the right half is the stationary back-cover side. This gives the closed
+    // book the correct reading orientation and keeps the front board on top.
     const stackMat = this._createPaperStackMaterial();
+    this.paperStackMat = stackMat;
     this.leftBlockGeo = this._buildPageBlockGeometry(-1);
     this.rightBlockGeo = this._buildPageBlockGeometry(1);
-    const leftBlockMesh = new THREE.Mesh(this.leftBlockGeo, stackMat);
-    const rightBlockMesh = new THREE.Mesh(this.rightBlockGeo, stackMat);
-    leftBlockMesh.castShadow = false;
-    leftBlockMesh.receiveShadow = false;
-    rightBlockMesh.castShadow = false;
-    rightBlockMesh.receiveShadow = false;
-    this.bookGroup.add(leftBlockMesh, rightBlockMesh);
-    this.leftBlockMesh = leftBlockMesh;
-    this.rightBlockMesh = rightBlockMesh;
+    this.leftBlockMesh = new THREE.Mesh(this.leftBlockGeo, stackMat);
+    this.rightBlockMesh = new THREE.Mesh(this.rightBlockGeo, stackMat);
+    [this.leftBlockMesh, this.rightBlockMesh].forEach((mesh) => {
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+    });
+    this.openBookGroup.add(this.rightBlockMesh);
+    this.leftPagesPivot = new THREE.Group();
+    this.leftPagesPivot.name = 'FrontPageBlockHinge';
+    this.leftPagesPivot.position.set(0, 0.26, 0);
+    this.leftBlockMesh.position.y = -0.26;
+    this.leftPagesPivot.add(this.leftBlockMesh);
+    this.openBookGroup.add(this.leftPagesPivot);
 
-    // Four static page textures (two resting faces + front/back of the flipping leaf)
+    // Chapter page textures and the two one-time painted Prologue table-of-contents textures.
     this.pageLeftCanvas = this._createStaticPageCanvas(true);
     this.pageRightCanvas = this._createStaticPageCanvas(false);
+    this.contentsLeftCanvas = this._createContentsPageCanvas(true);
+    this.contentsRightCanvas = this._createContentsPageCanvas(false);
     this.flipFrontCanvas = this._createStaticPageCanvas(false);
     this.flipBackCanvas = this._createStaticPageCanvas(true);
 
-    this.leftPageMat = new THREE.MeshStandardMaterial({
-      map: this.pageLeftCanvas.texture,
-      roughness: 0.92
-    });
-    this.rightPageMat = new THREE.MeshStandardMaterial({
-      map: this.pageRightCanvas.texture,
-      roughness: 0.92
-    });
-
+    // DoubleSide keeps both printed page meshes raycastable from the overhead
+    // Prologue camera and from the inclined reading camera without changing their appearance.
+    this.leftPageMat = new THREE.MeshStandardMaterial({ map: this.pageLeftCanvas.texture, roughness: 0.92, side: THREE.DoubleSide, transparent: true, opacity: 1, depthWrite: true });
+    this.rightPageMat = new THREE.MeshStandardMaterial({ map: this.pageRightCanvas.texture, roughness: 0.92, side: THREE.DoubleSide, transparent: true, opacity: 1, depthWrite: true });
+    this._installContentsHighlight(this.leftPageMat);
+    this._installContentsHighlight(this.rightPageMat);
     this.leftPageGeo = this._createCurvedSheetGeometry(true);
     this.rightPageGeo = this._createCurvedSheetGeometry(false);
-    const leftPageMesh = new THREE.Mesh(this.leftPageGeo, this.leftPageMat);
-    const rightPageMesh = new THREE.Mesh(this.rightPageGeo, this.rightPageMat);
-    leftPageMesh.receiveShadow = true;
-    rightPageMesh.receiveShadow = true;
-    this.bookGroup.add(leftPageMesh, rightPageMesh);
+    this.leftPageMesh = new THREE.Mesh(this.leftPageGeo, this.leftPageMat);
+    this.rightPageMesh = new THREE.Mesh(this.rightPageGeo, this.rightPageMat);
+    this.leftPageMesh.receiveShadow = true;
+    this.rightPageMesh.receiveShadow = true;
+    this.openBookGroup.add(this.rightPageMesh);
 
-    // Deformable 2-sided flipping leaf
+    // The left printed leaf folds with the front cover; the right leaf stays
+    // attached to the stationary back-cover side.
+    this.leftPagePivot = new THREE.Group();
+    this.leftPagePivot.name = 'FrontPrintedLeafHinge';
+    this.leftPagePivot.position.set(0, 0.26, 0);
+    this.leftPageMesh.position.y = -0.26;
+    this.leftPagePivot.add(this.leftPageMesh);
+    this.openBookGroup.add(this.leftPagePivot);
+
+    // Deformable two-sided leaf used for the eased 950ms physical page-turn animation.
     this.flipGroup = new THREE.Group();
     this.flipGroup.visible = false;
-    this.bookGroup.add(this.flipGroup);
-
-    const flipFrontMat = new THREE.MeshStandardMaterial({
-      map: this.flipFrontCanvas.texture,
-      roughness: 0.9,
-      side: THREE.FrontSide
+    this.openBookGroup.add(this.flipGroup);
+    this.flipFrontMat = new THREE.MeshStandardMaterial({
+      map: this.flipFrontCanvas.texture, roughness: 0.9, side: THREE.FrontSide
     });
-    const flipBackMat = new THREE.MeshStandardMaterial({
-      map: this.flipBackCanvas.texture,
-      roughness: 0.9,
-      side: THREE.BackSide
+    this.flipBackMat = new THREE.MeshStandardMaterial({
+      map: this.flipBackCanvas.texture, roughness: 0.9, side: THREE.BackSide
     });
-
     this.flipFrontGeo = this._createCurvedSheetGeometry(false);
-    this.flipBackGeo = this._createCurvedSheetGeometry(false);
-    const flipFrontMesh = new THREE.Mesh(this.flipFrontGeo, flipFrontMat);
-    const flipBackMesh = new THREE.Mesh(this.flipBackGeo, flipBackMat);
+    // FrontSide and BackSide material passes can share one deforming buffer.
+    // This halves the flip-leaf vertex and normal work on every turn frame.
+    this.flipBackGeo = this.flipFrontGeo;
+    const flipFrontMesh = new THREE.Mesh(this.flipFrontGeo, this.flipFrontMat);
+    const flipBackMesh = new THREE.Mesh(this.flipBackGeo, this.flipBackMat);
     flipFrontMesh.castShadow = true;
     flipFrontMesh.receiveShadow = true;
     flipBackMesh.castShadow = true;
     flipBackMesh.receiveShadow = true;
     this.flipGroup.add(flipFrontMesh, flipBackMesh);
+    this.contentsMode = false;
+    this.pendingContentsMode = null;
+    this._contentsHoverId = null;
+    this._contentsHoverChanges = 0;
+    this._scheduleContentsTextureWarmup();
+  }
+
+  /** Upload the two immutable TOC textures during idle time, not on first hover/click. */
+  _scheduleContentsTextureWarmup() {
+    const warm = () => {
+      this._tocWarmupTimer = null;
+      this._tocWarmupHandle = null;
+      if (!this.renderer || this._tocTexturesWarmed) return;
+      const textures = [this.contentsLeftCanvas?.texture, this.contentsRightCanvas?.texture].filter(Boolean);
+      textures.forEach((texture) => this.renderer.initTexture?.(texture));
+      this._tocTexturesWarmed = true;
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      this._tocWarmupTimer = window.setTimeout(() => {
+        this._tocWarmupTimer = null;
+        this._tocWarmupHandle = window.requestIdleCallback(warm, { timeout: 1800 });
+      }, 420);
+    } else {
+      this._tocWarmupTimer = window.setTimeout(warm, 700);
+    }
+  }
+
+  _cancelContentsTextureWarmup() {
+    if (this._tocWarmupTimer) {
+      window.clearTimeout(this._tocWarmupTimer);
+      this._tocWarmupTimer = null;
+    }
+    if (this._tocWarmupHandle) {
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(this._tocWarmupHandle);
+      this._tocWarmupHandle = null;
+    }
   }
 
   _createBeveledBoardMesh(side, topMat) {
@@ -696,6 +999,9 @@ export class CurvedBook3D {
     const topMesh = new THREE.Mesh(topGeo, topMat);
     const botMesh = new THREE.Mesh(shellGeo, this.coverOuterMat);
     const rimMesh = new THREE.Mesh(rimGeo, this.coverOuterMat);
+    topMesh.name = side < 0 ? 'FrontCoverInnerSurface' : 'BackCoverInnerSurface';
+    botMesh.name = side < 0 ? 'FrontCoverOuterSurface' : 'BackCoverOuterSurface';
+    rimMesh.name = side < 0 ? 'FrontCoverRim' : 'BackCoverRim';
     topMesh.receiveShadow = true;
     botMesh.castShadow = true;
     rimMesh.castShadow = true;
@@ -904,7 +1210,7 @@ export class CurvedBook3D {
     return geo;
   }
 
-  _applyCurveToSheet(geo, curvePts, normalOffset = 0) {
+  _applyCurveToSheet(geo, curvePts, normalOffset = 0, { computeBounds = false } = {}) {
     const pos = geo.attributes.position.array;
     let ptr = 0;
     for (let iv = 0; iv <= this.SEG_V; iv++) {
@@ -919,8 +1225,9 @@ export class CurvedBook3D {
     }
     geo.attributes.position.needsUpdate = true;
     geo.computeVertexNormals();
-    // The flipping leaf changes its bounds as it bends; keep frustum culling accurate.
-    geo.computeBoundingSphere();
+    // The flip sheet stays inside a conservative page-sized sphere. Updating
+    // the bound on every animation frame is unnecessary CPU work.
+    if (computeBounds || !geo.boundingSphere) geo.computeBoundingSphere();
   }
 
   _rebuildAllGeometry() {
@@ -932,19 +1239,506 @@ export class CurvedBook3D {
     this._updateBlockGeometry(this.rightBlockGeo, rightPts);
   }
 
+  /** Cache open/closed page profiles once. During the cover animation we interpolate
+   * existing GPU buffers rather than rebuilding meshes or creating a second book. */
+  _cachePaperGeometryStates() {
+    const refs = [this.leftPageGeo, this.rightPageGeo, this.leftBlockGeo, this.rightBlockGeo];
+    const arch = this.archScale;
+    this.archScale = 0.025;
+    this._rebuildAllGeometry();
+    this._paperFlatBuffers = refs.map((geo) => geo.attributes.position.array.slice());
+    this._paperFlatNormalBuffers = refs.map((geo) => geo.attributes.normal.array.slice());
+
+    this.archScale = arch;
+    this._rebuildAllGeometry();
+    this._paperOpenBuffers = refs.map((geo) => geo.attributes.position.array.slice());
+    this._paperOpenNormalBuffers = refs.map((geo) => geo.attributes.normal.array.slice());
+    this._paperGeometryRefs = refs;
+
+    // One conservative bound encloses both cached profiles. During morphing we
+    // only interpolate CPU buffers; normals and bounds are never recomputed per frame.
+    refs.forEach((geo, index) => {
+      const flat = this._paperFlatBuffers[index];
+      const open = this._paperOpenBuffers[index];
+      const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+      const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+      for (let i = 0; i < flat.length; i += 3) {
+        min.x = Math.min(min.x, flat[i], open[i]);
+        min.y = Math.min(min.y, flat[i + 1], open[i + 1]);
+        min.z = Math.min(min.z, flat[i + 2], open[i + 2]);
+        max.x = Math.max(max.x, flat[i], open[i]);
+        max.y = Math.max(max.y, flat[i + 1], open[i + 1]);
+        max.z = Math.max(max.z, flat[i + 2], open[i + 2]);
+      }
+      const box = new THREE.Box3(min, max);
+      geo.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
+    });
+    this.paperFlatten = 0;
+  }
+
+  _setPaperFlatten(amount) {
+    const t = THREE.MathUtils.clamp(amount, 0, 1);
+    if (!this._paperGeometryRefs || !this._paperFlatBuffers || !this._paperOpenBuffers) return;
+    const inv = 1 - t;
+    for (let index = 0; index < this._paperGeometryRefs.length; index++) {
+      const geo = this._paperGeometryRefs[index];
+      const positions = geo.attributes.position.array;
+      const normals = geo.attributes.normal.array;
+      const flat = this._paperFlatBuffers[index];
+      const open = this._paperOpenBuffers[index];
+      const flatNormals = this._paperFlatNormalBuffers[index];
+      const openNormals = this._paperOpenNormalBuffers[index];
+      for (let i = 0; i < positions.length; i++) {
+        positions[i] = open[i] * inv + flat[i] * t;
+        normals[i] = openNormals[i] * inv + flatNormals[i] * t;
+      }
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.normal.needsUpdate = true;
+    }
+    this.paperFlatten = t;
+  }
+
+  /**
+   * Prepare one closed-profile morph for the existing front-cover meshes.
+   * The left cover is authored for the open spread. A 180° hinge rotation
+   * reverses its vertical warp, so the stored closed profile compensates for
+   * that inversion and places the outside cloth above the paper block.
+   * All position/normal buffers are precomputed once, then interpolated in place.
+   */
+  _prepareFrontCoverMorph() {
+    if (!this.leftBoardGroup) return;
+    const lift = this.FRONT_COVER_LIFT;
+    this._frontCoverMorphParts = [];
+    const hingeLift = 0.52 + lift;
+    const innerOffset = 0.08;
+    const outerOffset = 0.015;
+    const liftAngle = ((5.6 * Math.PI) / 180) * this.coverWarpScale;
+    const widthScale = this.BOARD_W * Math.cos(liftAngle);
+
+    for (const mesh of this.leftBoardGroup.children) {
+      if (!mesh.isMesh || !mesh.geometry?.attributes?.position) continue;
+      const geometry = mesh.geometry;
+      const position = geometry.attributes.position;
+      const normal = geometry.attributes.normal;
+      const openPositions = position.array.slice();
+      const openNormals = normal?.array?.slice() || null;
+      const closedPositions = openPositions.slice();
+      const vertexCount = position.count;
+      const isInner = mesh.name === 'FrontCoverInnerSurface';
+      const isOuter = mesh.name === 'FrontCoverOuterSurface';
+
+      for (let vertex = 0; vertex < vertexCount; vertex++) {
+        const offset = vertex * 3;
+        const x = openPositions[offset];
+        const z = openPositions[offset + 2];
+        const u = THREE.MathUtils.clamp((Math.abs(x) - this.HINGE_X) / widthScale, 0, 1);
+        const zNorm = THREE.MathUtils.clamp(z / (this.BOARD_D * 0.5), -1, 1);
+        const topY = this._evalCoverBoard(-1, u, zNorm).yTop;
+
+        let targetY;
+        if (isInner) {
+          // The inner endpaper becomes the underside of the folded cover.
+          targetY = hingeLift - topY + innerOffset;
+        } else if (isOuter) {
+          // The outer cloth becomes the top face and clears the paper block.
+          targetY = hingeLift - topY - outerOffset;
+        } else {
+          // Rim vertices are emitted in top/bottom pairs by _createBeveledBoardMesh.
+          const isTopVertex = (vertex % 2) === 0;
+          targetY = isTopVertex
+            ? hingeLift - topY + innerOffset
+            : hingeLift - topY - outerOffset;
+        }
+        closedPositions[offset + 1] = targetY;
+      }
+
+      // Calculate folded normals once and restore the open profile.
+      position.array.set(closedPositions);
+      position.needsUpdate = true;
+      geometry.computeVertexNormals();
+      const closedNormals = geometry.attributes.normal.array.slice();
+      position.array.set(openPositions);
+      position.needsUpdate = true;
+      if (openNormals && geometry.attributes.normal) {
+        geometry.attributes.normal.array.set(openNormals);
+        geometry.attributes.normal.needsUpdate = true;
+      } else {
+        geometry.computeVertexNormals();
+      }
+
+      this._frontCoverMorphParts.push({ geometry, openPositions, closedPositions, openNormals, closedNormals });
+    }
+    this.frontCoverFold = 0;
+    this.leftBoardGroup.position.y = -0.26;
+  }
+
+  _setFrontCoverFold(amount) {
+    const t = THREE.MathUtils.clamp(amount, 0, 1);
+    if (!this._frontCoverMorphParts?.length) return;
+    const inv = 1 - t;
+    for (const part of this._frontCoverMorphParts) {
+      const position = part.geometry.attributes.position;
+      const target = position.array;
+      const open = part.openPositions;
+      const closed = part.closedPositions;
+      for (let i = 0; i < target.length; i++) {
+        target[i] = open[i] * inv + closed[i] * t;
+      }
+      position.needsUpdate = true;
+      const normal = part.geometry.attributes.normal;
+      if (normal && part.openNormals && part.closedNormals) {
+        const values = normal.array;
+        const nOpen = part.openNormals;
+        const nClosed = part.closedNormals;
+        for (let i = 0; i < values.length; i++) {
+          values[i] = nOpen[i] * inv + nClosed[i] * t;
+        }
+        normal.needsUpdate = true;
+      }
+    }
+    this.frontCoverFold = t;
+    // Moving the child slightly toward the front-facing side creates a real
+    // cover-over-pages stack when the hinge reaches its sealed pose.
+    this.leftBoardGroup.position.y = -0.26 - this.FRONT_COVER_LIFT * t;
+  }
+
+  /**
+   * Fade every paper-bearing surface as one coherent stack. During closing the
+   * paper fades only after the front cover has travelled 75% of its hinge arc;
+   * during opening the same curve is naturally reversed. Once fully hidden,
+   * paper meshes are removed from the render list to prevent edge clipping.
+   */
+  _setPaperOpacity(value, { hideAtZero = true } = {}) {
+    const opacity = THREE.MathUtils.clamp(value, 0, 1);
+    const pageMaterials = [this.leftPageMat, this.rightPageMat];
+    for (const material of pageMaterials) {
+      if (!material) continue;
+      material.transparent = true;
+      material.opacity = opacity;
+      material.depthWrite = opacity > 0.985;
+      material.needsUpdate = false;
+    }
+    if (this.paperStackMat) {
+      this.paperStackMat.transparent = true;
+      this.paperStackMat.opacity = opacity;
+      this.paperStackMat.depthWrite = opacity > 0.985;
+    }
+
+    const visible = !hideAtZero || opacity > 0.008;
+    if (this.leftPageMesh) this.leftPageMesh.visible = visible;
+    if (this.rightPageMesh) this.rightPageMesh.visible = visible;
+    if (this.leftBlockMesh) this.leftBlockMesh.visible = visible;
+    if (this.rightBlockMesh) this.rightBlockMesh.visible = visible;
+    this.paperOpacity = opacity;
+  }
+
+  _applyOpenPose() {
+    this.frontCoverPivot.rotation.z = 0;
+    this.leftPagesPivot.rotation.z = 0;
+    this.leftPagePivot.rotation.z = 0;
+    this._setFrontCoverFold(0);
+    this._setPaperFlatten(0);
+    this.frontCoverPivot.visible = true;
+    this.leftBoardGroup.visible = true;
+    this.rightBoardGroup.visible = true;
+    this.leftBlockMesh.visible = true;
+    this.rightBlockMesh.visible = true;
+    this.leftPageMesh.visible = true;
+    this.rightPageMesh.visible = true;
+    this._setPaperOpacity(1, { hideAtZero: false });
+    if (this.flipGroup) this.flipGroup.visible = false;
+    this.openBookGroup.visible = true;
+    this.bookGroup.visible = !this.focusHidden;
+    if (this.bookLights) this.bookLights.visible = !this.focusHidden;
+    this._poseCenterBlend = 1;
+    this.bookGroup.updateMatrixWorld(true);
+  }
+
+  _applySealedPose() {
+    this.frontCoverPivot.rotation.z = -Math.PI;
+    this.leftPagesPivot.rotation.z = -Math.PI;
+    this.leftPagePivot.rotation.z = -Math.PI;
+    this._setFrontCoverFold(1);
+    this._setPaperFlatten(1);
+    this.frontCoverPivot.visible = true;
+    this.leftBoardGroup.visible = true;
+    // The back board and the folded duplicate page block sit underneath the
+    // closed front cover; showing them from above creates the extra black slabs
+    // that appeared in the previous Sealed View.
+    this.rightBoardGroup.visible = false;
+    this.leftBlockMesh.visible = false;
+    this.rightBlockMesh.visible = false;
+    this.leftPageMesh.visible = false;
+    this.rightPageMesh.visible = false;
+    this._setPaperOpacity(0, { hideAtZero: true });
+    if (this.flipGroup) this.flipGroup.visible = false;
+    this.openBookGroup.visible = true;
+    this.bookGroup.visible = !this.focusHidden;
+    if (this.bookLights) this.bookLights.visible = !this.focusHidden;
+    this._poseCenterBlend = 0;
+    this.bookGroup.updateMatrixWorld(true);
+  }
+
+  _cacheBookPoseCenters() {
+    if (!this.openBookGroup || !this.frontCoverPivot || !this.leftPagesPivot || !this.leftPagePivot) return;
+    const saved = {
+      cover: this.frontCoverPivot.rotation.z,
+      pages: this.leftPagesPivot.rotation.z,
+      leaf: this.leftPagePivot.rotation.z,
+      flatten: this.paperFlatten,
+      fold: this.frontCoverFold ?? 0,
+      paperOpacity: this.paperOpacity ?? 1,
+      stackTransparent: this.paperStackMat?.transparent ?? false,
+      stackDepthWrite: this.paperStackMat?.depthWrite ?? true,
+      vis: {
+        book: this.bookGroup.visible,
+        open: this.openBookGroup.visible,
+        front: this.frontCoverPivot.visible,
+        leftBoard: this.leftBoardGroup.visible,
+        rightBoard: this.rightBoardGroup.visible,
+        leftBlock: this.leftBlockMesh.visible,
+        rightBlock: this.rightBlockMesh.visible,
+        leftPage: this.leftPageMesh.visible,
+        rightPage: this.rightPageMesh.visible
+      }
+    };
+    const capture = (sealed) => {
+      this.frontCoverPivot.rotation.z = sealed ? -Math.PI : 0;
+      this.leftPagesPivot.rotation.z = sealed ? -Math.PI : 0;
+      this.leftPagePivot.rotation.z = sealed ? -Math.PI : 0;
+      this._setFrontCoverFold(sealed ? 1 : 0);
+      this._setPaperFlatten(sealed ? 1 : 0);
+      this.frontCoverPivot.visible = true;
+      this.leftBoardGroup.visible = true;
+      this.rightBoardGroup.visible = !sealed;
+      this.leftBlockMesh.visible = !sealed;
+      this.rightBlockMesh.visible = !sealed;
+      this.leftPageMesh.visible = !sealed;
+      this.rightPageMesh.visible = !sealed;
+      this._setPaperOpacity(sealed ? 0 : 1, { hideAtZero: true });
+      this.openBookGroup.visible = true;
+      this.bookGroup.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(this.openBookGroup);
+      const worldCenter = bounds.getCenter(new THREE.Vector3());
+      return this.bookGroup.worldToLocal(worldCenter.clone());
+    };
+    this._poseCenters.sealed.copy(capture(true));
+    this._poseCenters.open.copy(capture(false));
+
+    this.frontCoverPivot.rotation.z = saved.cover;
+    this.leftPagesPivot.rotation.z = saved.pages;
+    this.leftPagePivot.rotation.z = saved.leaf;
+    this._setFrontCoverFold(saved.fold);
+    this._setPaperFlatten(saved.flatten ?? 1);
+    this._setPaperOpacity(saved.paperOpacity ?? 1, { hideAtZero: true });
+    if (this.paperStackMat) {
+      this.paperStackMat.transparent = saved.stackTransparent;
+      this.paperStackMat.depthWrite = saved.stackDepthWrite;
+    }
+    this.bookGroup.visible = saved.vis.book;
+    this.openBookGroup.visible = saved.vis.open;
+    this.frontCoverPivot.visible = saved.vis.front;
+    this.leftBoardGroup.visible = saved.vis.leftBoard;
+    this.rightBoardGroup.visible = saved.vis.rightBoard;
+    this.leftBlockMesh.visible = saved.vis.leftBlock;
+    this.rightBlockMesh.visible = saved.vis.rightBlock;
+    this.leftPageMesh.visible = saved.vis.leftPage;
+    this.rightPageMesh.visible = saved.vis.rightPage;
+    this.bookGroup.updateMatrixWorld(true);
+  }
+
   /* =========================================================================
      PUBLIC API: SHARED-SCENE BOOK + PHYSICAL PAGE FLIP
      ========================================================================= */
   setOpen(isOpen) {
-    this.opened = !!isOpen;
-    if (!this.opened) {
-      this._stopAnimation();
+    const next = !!isOpen;
+    if (next === this.opened && !this.coverTransition) return;
+    this.opened = next;
+    if (!next) {
       this.flipState = null;
       if (this.flipGroup) this.flipGroup.visible = false;
+    } else {
+      // Restore the parts hidden by the sealed pose before the same physical
+      // cover and page stack begin unfolding; no model swap is involved.
+      this.openBookGroup.visible = true;
+      this.frontCoverPivot.visible = true;
+      this.leftBoardGroup.visible = true;
+      this.rightBoardGroup.visible = true;
+      this.leftBlockMesh.visible = true;
+      this.rightBlockMesh.visible = true;
+      this.leftPageMesh.visible = true;
+      this.rightPageMesh.visible = true;
+      this._setPaperOpacity(0, { hideAtZero: false });
+      this._setFrontCoverFold(this.frontCoverFold ?? 1);
     }
-    if (this.bookGroup) this.bookGroup.visible = this.opened;
-    if (this.bookLights) this.bookLights.visible = this.opened;
+    this.bookGroup.visible = !this.focusHidden;
+    if (this.bookLights) this.bookLights.visible = !this.focusHidden;
+    if (this.renderer?.domElement) this.renderer.domElement.style.cursor = 'default';
+    this._animateCoverTransition(next);
     this.updateAnchor();
+  }
+
+  setPose(mode = 'chapter') {
+    this.poseMode = mode === 'sealed' ? 'sealed' : (mode === 'top-down' ? 'top-down' : 'chapter');
+    this.updateAnchor();
+  }
+
+  setFocusHidden(hidden) {
+    this.focusHidden = !!hidden;
+    if (this.bookGroup) this.bookGroup.visible = !this.focusHidden;
+    if (this.bookLights) this.bookLights.visible = !this.focusHidden;
+  }
+
+  _animateCoverTransition(opening) {
+    const duration = opening ? 1.72 : 1.92;
+    this.coverTransition = {
+      opening,
+      elapsed: 0,
+      duration,
+      fromCover: this.frontCoverPivot.rotation.z,
+      fromPages: this.leftPagesPivot.rotation.z,
+      fromLeaf: this.leftPagePivot.rotation.z,
+      fromFlatten: this.paperFlatten ?? (opening ? 1 : 0),
+      fromFold: this.frontCoverFold ?? (opening ? 1 : 0),
+      to: opening ? 0 : -Math.PI
+    };
+    this.bookGroup.visible = !this.focusHidden;
+    this.openBookGroup.visible = true;
+    this.frontCoverPivot.visible = true;
+    this.leftBoardGroup.visible = true;
+    this.rightBoardGroup.visible = true;
+    this.leftBlockMesh.visible = true;
+    this.rightBlockMesh.visible = true;
+    this.leftPageMesh.visible = true;
+    this.rightPageMesh.visible = true;
+    this._setPaperOpacity(opening ? 0 : 1, { hideAtZero: false });
+  }
+
+  /** Called once per Engine frame; no independent book requestAnimationFrame. */
+  updateAnimation(delta) {
+    if (this.coverTransition) {
+      const state = this.coverTransition;
+      state.elapsed = Math.min(state.duration, state.elapsed + delta);
+      const t = THREE.MathUtils.clamp(state.elapsed / state.duration, 0, 1);
+      const ease = (x) => {
+        const v = THREE.MathUtils.clamp(x, 0, 1);
+        return v < 0.5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2;
+      };
+      const smooth = (a, b, x) => THREE.MathUtils.smoothstep(x, a, b);
+      // Let the page block gather first, then fold the cover over it. On open,
+      // reverse the same choreography. The front-cover geometry morphs to a
+      // complementary closed profile so its outer cloth lands flush over paper.
+      const coverT = state.opening
+        ? ease((t - 0.015) / 0.70)
+        : ease((t - 0.30) / 0.70);
+      const pagesT = state.opening
+        ? ease((t - 0.10) / 0.90)
+        : ease(t / 0.60);
+      const flattenT = state.opening ? smooth(0.08, 0.96, t) : smooth(0.0, 0.62, t);
+      const foldTarget = state.opening ? 0 : 1;
+      const foldT = THREE.MathUtils.lerp(state.fromFold, foldTarget, coverT);
+
+      this.frontCoverPivot.rotation.z = THREE.MathUtils.lerp(state.fromCover, state.to, coverT);
+      this.leftPagesPivot.rotation.z = THREE.MathUtils.lerp(state.fromPages, state.to, pagesT);
+      this.leftPagePivot.rotation.z = THREE.MathUtils.lerp(state.fromLeaf, state.to, pagesT);
+      this._setFrontCoverFold(foldT);
+      this._setPaperFlatten(THREE.MathUtils.lerp(state.fromFlatten, state.opening ? 0 : 1, flattenT));
+
+      // Use the real hinge travel, not wall-clock transition time: paper remains
+      // visible until the cover has completed 75% of its closing arc, then fades
+      // over a short 0.18s-equivalent hinge window. Opening reverses this curve.
+      const closedProgress = THREE.MathUtils.clamp(Math.abs(this.frontCoverPivot.rotation.z) / Math.PI, 0, 1);
+      const paperOpacity = 1 - THREE.MathUtils.smoothstep(closedProgress, 0.75, 0.90);
+      this._setPaperOpacity(paperOpacity, { hideAtZero: true });
+      this._poseCenterBlend = state.opening ? ease(t) : 1 - ease(t);
+
+      if (t >= 1) {
+        if (state.opening) this._applyOpenPose();
+        else this._applySealedPose();
+        if (state.opening) this._setPaperOpacity(1, { hideAtZero: false });
+        else this._setPaperOpacity(0, { hideAtZero: true });
+        this.bookGroup.visible = !this.focusHidden;
+        this.coverTransition = null;
+      }
+    }
+
+    if (this.flipState && this.opened) {
+      const state = this.flipState;
+      state.elapsed = Math.min(state.duration, state.elapsed + delta * 1000);
+      const linear = THREE.MathUtils.clamp(state.elapsed / state.duration, 0, 1);
+      const eased = linear < 0.5
+        ? 4 * linear * linear * linear
+        : 1 - Math.pow(-2 * linear + 2, 3) / 2;
+      state.progress = state.dir > 0 ? eased : 1 - eased;
+      const progress = THREE.MathUtils.clamp(state.progress, 0.001, 0.999);
+      const points = this._sampleFlipCurve(this.SEG_U, progress);
+      // The front/back meshes share one geometry, so deform and compute normals once.
+      this._applyCurveToSheet(this.flipFrontGeo, points, 0.003, { computeBounds: false });
+      if (linear >= 1) this.finishFlip();
+    }
+  }
+
+  setContentsMode(enabled, { defer = false } = {}) {
+    const next = !!enabled;
+    if (defer) {
+      this.pendingContentsMode = next;
+      return;
+    }
+    this.contentsMode = next;
+    this.pendingContentsMode = null;
+    if (!this.leftPageMat || !this.rightPageMat) return;
+    // All page variants are CanvasTextures, so the shader program stays identical.
+    // Swap only the sampler texture; do not trigger a material recompile on every
+    // Prologue entry/exit.
+    this.leftPageMat.map = next ? this.contentsLeftCanvas.texture : this.pageLeftCanvas.texture;
+    this.rightPageMat.map = next ? this.contentsRightCanvas.texture : this.pageRightCanvas.texture;
+    this._contentsHoverId = null;
+    const leftHighlight = this.leftPageMat.userData.contentsHighlightUniforms;
+    const rightHighlight = this.rightPageMat.userData.contentsHighlightUniforms;
+    if (leftHighlight) { leftHighlight.enabled.value = next ? 1 : 0; leftHighlight.hoverRow.value = -1; }
+    if (rightHighlight) { rightHighlight.enabled.value = next ? 1 : 0; rightHighlight.hoverRow.value = -1; }
+    if (this.renderer?.domElement) this.renderer.domElement.style.cursor = 'default';
+  }
+
+  _chapterAtPageHit(hit) {
+    if (!this.contentsMode || !hit?.uv) return null;
+    const onLeft = hit.object === this.leftPageMesh;
+    if (!onLeft && hit.object !== this.rightPageMesh) return null;
+
+    // The page geometry deliberately encodes the printed reading direction in
+    // its UVs: the left sheet's U axis is mirrored, while the right sheet's is
+    // normal. Therefore hit.uv.x already maps to the CanvasTexture's horizontal
+    // coordinate on both pages. Geometry V is 1 at the printed top edge, so
+    // invert it to the canvas's top-origin Y coordinate. This also respects the
+    // curved page profile (unlike deriving U from local X, which is nonlinear).
+    const point = {
+      x: THREE.MathUtils.clamp(hit.uv.x, 0, 1),
+      y: THREE.MathUtils.clamp(1 - hit.uv.y, 0, 1)
+    };
+    return onLeft
+      ? this.contentsLeftCanvas.chapterAt(point)
+      : this.contentsRightCanvas.chapterAt(point);
+  }
+
+  handlePageHover(hit) {
+    if (!this.contentsMode || !this.opened) return;
+    const chapterId = this._chapterAtPageHit(hit);
+    const pageMesh = hit?.object === this.leftPageMesh || hit?.object === this.rightPageMesh ? hit.object : null;
+    const hoverKey = chapterId ? `${chapterId}:${pageMesh === this.leftPageMesh ? 'L' : 'R'}` : null;
+    if (hoverKey === this._contentsHoverId) return;
+    this._contentsHoverId = hoverKey;
+    this._contentsHoverChanges++;
+    if (this.renderer?.domElement) this.renderer.domElement.style.cursor = chapterId ? 'pointer' : 'default';
+    // Hover only changes two scalar shader uniforms. The printed page textures
+    // are immutable after creation and are never re-uploaded while moving the pointer.
+    this._setContentsHighlight(chapterId, pageMesh);
+  }
+
+  clearPageHover() {
+    if (!this.contentsMode || !this._contentsHoverId) return;
+    this._contentsHoverId = null;
+    if (this.renderer?.domElement) this.renderer.domElement.style.cursor = 'default';
+    this._setContentsHighlight(null, null);
   }
 
   setTheme(theme) {
@@ -952,6 +1746,10 @@ export class CurvedBook3D {
     if (!this.flipState) {
       this.pageLeftCanvas?.render(this.theme);
       this.pageRightCanvas?.render(this.theme);
+      if (!this.contentsMode) {
+        if (this.leftPageMat) this.leftPageMat.map = this.pageLeftCanvas.texture;
+        if (this.rightPageMat) this.rightPageMat.map = this.pageRightCanvas.texture;
+      }
     }
   }
 
@@ -961,59 +1759,123 @@ export class CurvedBook3D {
    * the page dock position reproduce the old bottom-centred layout. The book itself
    * remains a normal Engine-scene object, so solids occlude it through the depth buffer.
    */
-  updateAnchor() {
+  /** Return the actual visual centre of the current book pose for camera framing. */
+  getCameraAimPoint(mode = this.poseMode, out = new THREE.Vector3()) {
+    if (!this.bookGroup) return out.set(0, 0, 0);
+    this.bookGroup.updateMatrixWorld(true);
+    const blend = THREE.MathUtils.clamp(this._poseCenterBlend ?? (mode === 'sealed' ? 0 : 1), 0, 1);
+    this._anchorCenterLocal.copy(this._poseCenters.sealed).lerp(this._poseCenters.open, blend);
+    return out.copy(this._anchorCenterLocal).applyMatrix4(this.bookGroup.matrixWorld);
+  }
+
+  updateAnchor(delta = 1 / 60) {
     if (!this.bookGroup || !this.camera || !this.engine?.renderer?.domElement) return;
 
+    // The book is persistent outside Focus Mode. Do not force individual cover
+    // or page meshes visible here: Sealed View intentionally hides the back board
+    // and folded duplicate leaf beneath the front cover.
+    this.bookGroup.visible = !this.focusHidden;
+
     const canvasRect = this.engine.renderer.domElement.getBoundingClientRect();
-    const stageRect = this.container?.getBoundingClientRect?.();
-    if (!canvasRect.width || !canvasRect.height || !stageRect?.width || !stageRect?.height) return;
+    if (!(canvasRect.width > 0 && canvasRect.height > 0)) return;
+    const measuredStage = this.container?.getBoundingClientRect?.();
+    const stageRect = measuredStage && measuredStage.width > 0 && measuredStage.height > 0
+      ? measuredStage
+      : { left: canvasRect.left, top: canvasRect.top, width: canvasRect.width, height: canvasRect.height };
 
     this.camera.updateMatrixWorld(true);
-
-    // Build 11 placed the stage above the unboxed page dock. Its flex-flow used an
-    // 8px overlap, so the visible book stage ends 8px below the dock's top edge.
+    const overhead = this.poseMode === 'top-down' || this.poseMode === 'sealed';
     const dock = this.container.parentElement?.querySelector('.book-bottom-bar');
     const dockRect = dock?.getBoundingClientRect?.();
-    const stageBottomY = dockRect && dockRect.height > 0
-      ? dockRect.top + 8
-      : canvasRect.bottom - this.LEGACY_STAGE_BOTTOM;
 
     const stageCenterX = stageRect.left + stageRect.width * 0.5;
-    const stageCenterY = stageBottomY - stageRect.height * 0.5;
-    // In Build 11 the book origin was slightly below the old camera's look-at
-    // point (y=0 versus y=0.44). Preserve that exact projected offset too.
-    const targetX = stageCenterX - this.LEGACY_BOOK_ORIGIN_NDC.x * stageRect.width * 0.5;
-    const targetY = stageCenterY - this.LEGACY_BOOK_ORIGIN_NDC.y * stageRect.height * 0.5;
+    const stageCenterY = overhead
+      ? stageRect.top + stageRect.height * 0.5
+      : (dockRect && dockRect.height > 0
+        ? dockRect.top + 8 - stageRect.height * 0.5
+        : canvasRect.bottom - this.LEGACY_STAGE_BOTTOM - stageRect.height * 0.5);
+
+    const visualAspect = this.poseMode === 'sealed'
+      ? this.BOARD_W / this.BOARD_D
+      : (this.PAGE_W * 2) / this.PAGE_D;
+    const fitHeight = Math.min(stageRect.height, stageRect.width / visualAspect);
+    const targetX = stageCenterX - (overhead ? 0 : this.LEGACY_BOOK_ORIGIN_NDC.x * stageRect.width * 0.5);
+    const targetY = stageCenterY - (overhead ? 0 : this.LEGACY_BOOK_ORIGIN_NDC.y * stageRect.height * 0.5);
     const ndcX = ((targetX - canvasRect.left) / canvasRect.width) * 2 - 1;
     const ndcY = 1 - ((targetY - canvasRect.top) / canvasRect.height) * 2;
 
-    // Keep the whole book behind the current solid, even while the user zooms out.
-    const cameraToOrigin = this.camera.position.length();
-    const depth = Math.max(6.4, cameraToOrigin + 2.8);
+    // One-way camera rig: book position is derived from the stable camera target,
+    // never used to calculate that target. Reuse vectors to avoid frame allocations.
+    const rigTarget = this.engine?._cameraTargetTarget || this._anchorZero;
+    const rigDistance = this.camera.position.distanceTo(rigTarget);
+    const depth = Math.max(6.4, rigDistance + 2.8);
     const halfFovTangent = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) * 0.5);
     const aspect = canvasRect.width / canvasRect.height;
-    const local = new THREE.Vector3(
+    this._anchorLocalPoint.set(
       ndcX * depth * halfFovTangent * aspect,
       ndcY * depth * halfFovTangent,
       -depth
     );
+    this._anchorWorldPoint.copy(this._anchorLocalPoint).applyMatrix4(this.camera.matrixWorld);
+    this.bookGroup.position.copy(this._anchorWorldPoint);
 
-    this.bookGroup.position.copy(this.camera.localToWorld(local));
-    // The old book camera's inverse quaternion preserves its original top-down
-    // perspective relative to the Engine camera, without rotating the Engine itself.
-    this.bookGroup.quaternion.copy(this.camera.quaternion).multiply(this.localBookRotation);
+    this._anchorChapterPose.copy(this.camera.quaternion).multiply(this.localBookRotation);
+    this._anchorTargetPose.copy(this._anchorChapterPose);
+    if (overhead) {
+      this._anchorNormal.copy(this.camera.position).sub(this.bookGroup.position).normalize();
+      this._anchorRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion).normalize();
+      this._anchorPageDepthAxis.crossVectors(this._anchorRight, this._anchorNormal).normalize();
+      this._anchorBasisMatrix.makeBasis(this._anchorRight, this._anchorNormal, this._anchorPageDepthAxis);
+      this._anchorTargetPose.setFromRotationMatrix(this._anchorBasisMatrix);
+    }
+    if (!this._poseInitialized) {
+      this.bookGroup.quaternion.copy(this._anchorTargetPose);
+      this._poseInitialized = true;
+    } else {
+      this.bookGroup.quaternion.slerp(this._anchorTargetPose, 1 - Math.exp(-Math.max(0.001, delta) * 6.5));
+    }
 
-    // Match Build 11's apparent pixel size across viewport heights and zoom levels.
-    // Perspective scaling compensates for Engine FOV 45° versus the old book FOV 34°.
-    const oldHalfFovTangent = Math.tan(THREE.MathUtils.degToRad(this.LEGACY_BOOK_FOV) * 0.5);
-    const scale = (stageRect.height / canvasRect.height)
-      * (depth / this.LEGACY_BOOK_VIEW_DEPTH)
-      * (halfFovTangent / oldHalfFovTangent);
+    const engineHalfFov = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) * 0.5);
+    let scale;
+    if (overhead) {
+      const worldHeight = this.poseMode === 'sealed' ? this.BOARD_D : this.PAGE_D;
+      scale = (fitHeight / canvasRect.height) * (2 * depth * engineHalfFov) / worldHeight;
+    } else {
+      const oldHalfFovTangent = Math.tan(THREE.MathUtils.degToRad(this.LEGACY_BOOK_FOV) * 0.5);
+      scale = (stageRect.height / canvasRect.height)
+        * (depth / this.LEGACY_BOOK_VIEW_DEPTH)
+        * (engineHalfFov / oldHalfFovTangent);
+    }
     this.bookGroup.scale.setScalar(scale);
+
+    // Centre the visible physical mass for the current pose (closed cover vs spread).
+    const blend = THREE.MathUtils.clamp(this._poseCenterBlend ?? (this.poseMode === 'sealed' ? 0 : 1), 0, 1);
+    this._anchorCenterLocal.copy(this._poseCenters.sealed).lerp(this._poseCenters.open, blend);
+    this._anchorCenterOffset.copy(this._anchorCenterLocal).multiplyScalar(scale).applyQuaternion(this.bookGroup.quaternion);
+    this.bookGroup.position.sub(this._anchorCenterOffset);
     this.bookGroup.updateMatrixWorld(true);
+
+    if (this.opened && this.poseMode === 'chapter') {
+      const pageSurfaceY = this._getSupportHeightAtX(0) + 0.035;
+      this._anchorPageWorldPoint.set(0, pageSurfaceY, 0).applyMatrix4(this.bookGroup.matrixWorld);
+      this._anchorPageCameraPoint.copy(this._anchorPageWorldPoint).applyMatrix4(this.camera.matrixWorldInverse);
+      const pageDepth = Math.max(0.1, -this._anchorPageCameraPoint.z);
+      const modelDepth = Math.max(1.65, rigDistance - 0.08);
+      const depthRatio = modelDepth / pageDepth;
+      const hoverGap = 1.08;
+      this._anchorStageCameraPoint.set(
+        this._anchorPageCameraPoint.x * depthRatio,
+        this._anchorPageCameraPoint.y * depthRatio + hoverGap,
+        -modelDepth
+      );
+      this._anchorStageCameraPoint.applyMatrix4(this.camera.matrixWorld);
+      this.engine.setFloatingStageAnchor(this._anchorStageCameraPoint);
+    } else {
+      this.engine.setFloatingStageAnchor(null);
+    }
   }
 
-  triggerFlip(dir, newTheme) {
+  triggerFlip(dir, newTheme, { nextContents = this.contentsMode } = {}) {
     if (!this.opened) {
       this.setTheme(newTheme || {});
       return;
@@ -1032,11 +1894,22 @@ export class CurvedBook3D {
     this.pageRightCanvas.render(rightTheme);
     this.flipFrontCanvas.render(frontTheme);
     this.flipBackCanvas.render(backTheme);
+    const frontMap = this.contentsMode
+      ? (direction > 0 ? this.contentsRightCanvas.texture : this.contentsLeftCanvas.texture)
+      : (direction > 0 ? this.pageRightCanvas.texture : this.pageLeftCanvas.texture);
+    const backMap = nextContents
+      ? (direction > 0 ? this.contentsLeftCanvas.texture : this.contentsRightCanvas.texture)
+      : (direction > 0 ? this.pageLeftCanvas.texture : this.pageRightCanvas.texture);
+    this.flipFrontMat.map = frontMap;
+    this.flipBackMat.map = backMap;
+    this.flipFrontMat.needsUpdate = true;
+    this.flipBackMat.needsUpdate = true;
+    this.pendingContentsMode = !!nextContents;
 
     this.flipState = {
       dir: direction,
       progress: direction > 0 ? 0 : 1,
-      duration: 760 // original Build 11 physical page-turn duration
+      duration: 950 // slower physical page turn for a more deliberate paper motion
     };
     this.flipGroup.visible = true;
     this.flipStartedAt = null;
@@ -1044,13 +1917,13 @@ export class CurvedBook3D {
   }
 
   finishFlip() {
-    this._stopAnimation();
     this.flipState = null;
     if (this.flipGroup) this.flipGroup.visible = false;
     if (this.opened) {
-      this.pageLeftCanvas?.render(this.theme);
-      this.pageRightCanvas?.render(this.theme);
+      if (this.pendingContentsMode !== null) this.setContentsMode(this.pendingContentsMode);
     }
+    this.flipFrontMat.map = this.contentsMode ? this.contentsLeftCanvas.texture : this.pageLeftCanvas.texture;
+    this.flipBackMat.map = this.contentsMode ? this.contentsRightCanvas.texture : this.pageRightCanvas.texture;
   }
 
   resize() {
@@ -1063,47 +1936,13 @@ export class CurvedBook3D {
   }
 
   _stopAnimation() {
-    if (this.animationFrame !== null) {
-      cancelAnimationFrame(this.animationFrame);
-      this.animationFrame = null;
-    }
-    this.flipStartedAt = null;
+    this.flipState = null;
+    if (this.flipGroup) this.flipGroup.visible = false;
   }
 
   _startFlipAnimation() {
-    this._stopAnimation();
-    const animate = (timestamp) => {
-      if (!this.opened || !this.flipState) {
-        this.animationFrame = null;
-        return;
-      }
-
-      const state = this.flipState;
-      if (this.flipStartedAt === null) this.flipStartedAt = timestamp;
-      const linear = Math.min(1, (timestamp - this.flipStartedAt) / state.duration);
-      const eased = linear < 0.5
-        ? 4 * linear * linear * linear
-        : 1 - Math.pow(-2 * linear + 2, 3) / 2;
-      state.progress = state.dir > 0 ? eased : 1 - eased;
-
-      const p = Math.max(0.001, Math.min(0.999, state.progress));
-      const flipPoints = this._sampleFlipCurve(this.SEG_U, p);
-      this._applyCurveToSheet(this.flipFrontGeo, flipPoints, 0.003);
-      this._applyCurveToSheet(this.flipBackGeo, flipPoints, 0.001);
-
-      if (linear < 1) {
-        this.animationFrame = requestAnimationFrame(animate);
-        return;
-      }
-
-      this.animationFrame = null;
-      this.flipState = null;
-      this.flipGroup.visible = false;
-      this.pageLeftCanvas.render(this.theme);
-      this.pageRightCanvas.render(this.theme);
-    };
-
-    this.animationFrame = requestAnimationFrame(animate);
+    // Compatibility entry point: Engine.updateAnimation() owns the actual turn.
+    if (this.flipState) this.flipState.elapsed = 0;
   }
 
   _bindEvents() {
@@ -1111,9 +1950,18 @@ export class CurvedBook3D {
     // nearer solid naturally takes precedence over the book behind it.
   }
 
-  handleRaycastHit(worldPoint) {
-    if (!this.opened || !worldPoint) return false;
-    const localPoint = this.bookGroup.worldToLocal(worldPoint.clone());
+  handleRaycastHit(hit) {
+    if (!this.opened || !hit?.point) return false;
+    if (this.contentsMode) {
+      const chapterId = this._chapterAtPageHit(hit);
+      if (chapterId) {
+        this.onChapterSelect?.(chapterId);
+        return true;
+      }
+      // In Prologue only the printed entries are interactive; blank paper is inert.
+      return hit.object === this.leftPageMesh || hit.object === this.rightPageMesh;
+    }
+    const localPoint = this.bookGroup.worldToLocal(hit.point.clone());
     if (localPoint.x < 0) this.onPrev?.();
     else this.onNext?.();
     return true;
@@ -1121,6 +1969,8 @@ export class CurvedBook3D {
 
   dispose() {
     this._stopAnimation();
+    this._cancelContentsTextureWarmup();
+    this.coverTransition = null;
     if (this.bookGroup) this.scene.remove(this.bookGroup);
     if (this.bookLights) this.scene.remove(this.bookLights);
   }

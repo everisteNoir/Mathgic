@@ -1,8 +1,8 @@
 /**
  * UIController.js — chapter controls, geometric feedback audio and URL state.
  */
-import { fxState } from '../core/FXState.js?v=13';
-import { FantasyUI } from './FantasyUI.js?v=13';
+import { fxState } from '../core/FXState.js?v=23';
+import { FantasyUI } from './FantasyUI.js?v=23';
 
 export class UIController {
   constructor(engine, eventBus, audioEngine, spellManager) {
@@ -64,6 +64,8 @@ export class UIController {
     this.btnAudio.addEventListener('click', () => {
       const enabled = this.audio.toggle();
       this.audioLabel.textContent = enabled ? 'Sound: Resonant' : 'Sound: Silent';
+      this.btnAudio.setAttribute('aria-pressed', String(enabled));
+      this.btnAudio.classList.toggle('is-active', enabled);
       this.showToast(enabled ? 'Harmonic geometric audio enabled' : 'Audio muted');
     });
 
@@ -91,11 +93,16 @@ export class UIController {
   }
 
   _bindEngineFeedback() {
+    this.eventBus.on('FOCUS_MODE_CHANGED', ({ active }) => {
+      if (active) this.showToast('Focus Mode — double-click inspection');
+    });
+
     this.eventBus.on('SOLID_CHANGED', ({ solidId, meta, geoData }) => {
       [this.infoBadge, this.infoName, this.infoPhilosophy, this.infoFaceShape, this.infoTip].forEach((el) =>
         this.fantasy.retrigger(el)
       );
       this.infoBadge.textContent = `${meta.element.toUpperCase()} • ${meta.elementGreek}`;
+      this.grimoire?.updatePolyhedraTheme?.(meta);
       this.infoBadge.style.color = meta.secondaryColor;
       this.infoName.textContent = meta.name;
       this.infoPhilosophy.textContent = meta.philosophy;

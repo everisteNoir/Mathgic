@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderMathInElementSafe } from '../core/MathRenderer.js?v=23';
 
 const material = (color, opacity = 0.9, size = 0.06) => new THREE.PointsMaterial({
   color,
@@ -93,7 +94,7 @@ export const InfinitySpell = {
   name: 'Infinity',
   isolateStage: true,
   hasLiveReadout: true,
-  initialReadout: 'ℵ₀ — countable infinity: ℕ, ℤ and ℚ have the same cardinality.',
+  initialReadout: String.raw`\(\aleph_0\) — countable infinity: \(\mathbb{N}\), \(\mathbb{Z}\) and \(\mathbb{Q}\) have the same cardinality.`,
   description: 'Explore countable infinity, Cantor’s diagonal argument, the power-set theorem and the aleph hierarchy.',
   controls: [
     {
@@ -205,9 +206,9 @@ export const InfinitySpell = {
     if (page === 'aleph0') {
       const model = this.params.model || 'integers';
       if (model === 'integers') {
-        this._readoutEl.textContent = 'ℤ: 0, 1, −1, 2, −2, 3, −3, …  Pair the n-th entry with n ∈ ℕ.';
+        this._readoutEl.textContent = String.raw`\(\mathbb{Z}: 0,1,-1,2,-2,3,-3,\ldots\)` + ' Pair the n-th entry with ' + String.raw`\(n\in\mathbb{N}\)` + '.';
       } else if (model === 'rationals') {
-        this._readoutEl.textContent = 'ℚ: enumerate reduced fractions p/q (q > 0, gcd(|p|, q) = 1) by diagonals; skip duplicates.';
+        this._readoutEl.textContent = String.raw`\(\mathbb{Q}: p/q,\quad q>0,\quad \gcd(|p|,q)=1\)` + ' — enumerate reduced fractions by diagonals; skip duplicates.';
       } else {
         this._readoutEl.textContent = this.hotelShifted
           ? 'All guests moved n → n + 1. Room 1 is now available for the new guest.'
@@ -216,19 +217,20 @@ export const InfinitySpell = {
     } else if (page === 'diagonal') {
       if (!this.sequenceRows.length) this._generateBinaryRows();
       const bits = this.sequenceRows.map((row, i) => row[i % row.length] ? 0 : 1).join('');
-      this._readoutEl.textContent = `Diagonal complement (first ${bits.length} bits): ${bits}. It differs from row i at position i.`;
+      this._readoutEl.textContent = String.raw`Diagonal complement (first ${bits.length} bits): ${bits}. It differs from row \(i\) at position \(i\).`;
     } else if (page === 'power') {
       const n = this.params.dimension || 4;
       if (this.diagonalConstructed) {
-        this._readoutEl.textContent = `n = ${n}: |P(A)| = 2ⁿ = ${2 ** n}. The highlighted D is not hit by any arrow f(a).`;
+        this._readoutEl.textContent = String.raw`\(n=${n}: |\mathcal{P}(A)|=2^n=${2 ** n}\). The highlighted \(D\) is not hit by any arrow \(f(a)\).`;
       } else {
-        this._readoutEl.textContent = `Choose n = ${n}: the n-cube has ${2 ** n} vertices, one for each subset of A. Then construct D = {a ∈ A : a ∉ f(a)}.`;
+        this._readoutEl.textContent = String.raw`Choose \(n=${n}\): the \(n\)-cube has ${2 ** n} vertices, one for each subset of \(A\). Then construct \(D=\{a\in A:a\notin f(a)\}\).`;
       }
     } else {
       const k = this.params.k || 0;
       const subscripts = ['₀','₁','₂','₃','₄','₅'];
-      this._readoutEl.textContent = `Selected level ℵ${subscripts[k]}. Each step is the next aleph cardinal; particle density is illustrative, not a scale.`;
+      this._readoutEl.textContent = String.raw`Selected level \(\aleph_{${k}}\). Each step is the next aleph cardinal; particle density is illustrative, not a scale.`;
     }
+    renderMathInElementSafe(this._readoutEl);
   },
 
   _buildVisual(initial = false) {
@@ -493,7 +495,7 @@ export const InfinitySpell = {
 
   onUpdate(_elapsed, delta) {
     if (this.transitionT < 1 && this.visualGroup) {
-      this.transitionT = Math.min(1, this.transitionT + delta / 0.42);
+      this.transitionT = Math.min(1, this.transitionT + delta / 0.95);
       const t = this.transitionT;
       const eased = t * t * (3 - 2 * t);
       this.visualGroup.scale.setScalar(0.78 + 0.22 * eased);

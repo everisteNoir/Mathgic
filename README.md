@@ -1,27 +1,36 @@
-# Mathgic — Build 13: Build 11 Book Pose Restoration
+# Mathgic 3D — Build 23: Progressive Paper Fade & Elemental Awakening
 
-A zero-build ES Modules Three.js experience for sacred geometry, projection, infinity and non-Euclidean topics.
+## Build 23 highlights
 
-## Build 13 changes
+### Book closing and Prologue controls
+- The paper stack now follows the actual front-cover hinge progress. During closing, the printed pages and paper block remain visible until the cover has completed 75% of its travel, then fade smoothly to zero over the final hinge interval.
+- Opening reverses the same fade curve so paper is revealed only as the front cover clears it.
+- The sealed pose hides all paper-bearing meshes after the fade, preventing page geometry from clipping through the closed front cover.
+- Prologue has a dedicated viewport-level **Close Book** control at the lower-right corner. It sits outside the transformed book dock so its position is reliable on desktop and mobile.
+- The sealed scene receives a restrained fantasy atmosphere through CSS-only vignette, subtle starlight and ambient glow; no magic circle or additional WebGL renderer is introduced.
 
-- Restored the Build 11 book-stage footprint, bottom placement and apparent size inside the shared Engine renderer.
-- Reconstructed the original Build 11 book-camera viewing quaternion (FOV 34°, distance 8.95, pitch 0.34 rad, look-at height 0.44) as a transform reference; the Engine camera and renderer remain unchanged.
-- Preserved the original curved page-turn geometry, 64 × 16 mesh resolution, 760 ms duration and cubic ease-in-out animation.
-- Kept the book in the shared Engine scene so active solids occlude it through the common depth buffer.
-- Removed visible chapter names and native hover tooltips from the Chapter Rail; accessible labels remain for assistive technology.
-- Added a second Prologue page, References, with selected further reading and publisher/catalogue/DOI links.
-- Retained the single WebGL renderer, solid interactions, Infinity chapter, Projection/Tesseract content and Polyhedra-only hold-to-charge behavior.
+### Progressive Polyhedra interaction
+- Hold-to-charge now begins with a short `CHARGE INTRO`: the core, particles, rings, fragments and shell fade/scale into view instead of appearing at full strength on the first charge frame.
+- Releasing early uses a short, smooth charge fade-out rather than hiding the effect immediately.
+- The charge effect continues to use the existing pooled buffers and materials; no geometry or material is allocated in the frame loop.
 
-## Run locally
+### Elemental core materialization
+- Incoming Polyhedra cores use a dedicated reveal wrapper around their existing core group.
+- The core gradually scales and fades in, slightly staggered behind the first vertex cues of the reconstruction.
+- Reconstruction continues in the approved order: **Vertices → Edges → Faces**.
+- The wrapper does not interfere with the individual element core animation or unfold transforms.
 
-Serve this folder with any static web server (ES modules and the import map require HTTP/HTTPS):
+### Preserved architecture and interactions
+- One shared Three.js scene and one WebGL renderer.
+- Existing CHAPTER EXPLORATION behavior and double-click Focus Mode.
+- Prologue Table of Contents remains the special printed spread with UV-based interactions.
+- Existing Powerful Detonation, elemental profiles, chapter interface consistency and spell controls are retained.
 
-```bash
-python -m http.server 8080
-```
+## Performance and validation
+- The paper fade updates material opacity and visibility only; it does not rebuild page geometry.
+- Hold intro/fade reuse the existing particle and instanced-fragment pools.
+- Core materialization uses a cached parent transform and cached material references.
+- Run static HTTP serving as usual. Three.js and KaTeX use pinned jsDelivr dependencies, so the first load requires Internet access.
 
-Then open `http://localhost:8080` in a modern browser with WebGL enabled.
-
-## Notes
-
-The reference page is labelled as selected further reading; these entries are supplementary sources, not a claim that the sample source files formally cite every item. Three.js 0.160.0 and Google Fonts load from their hosted services, so an internet connection is required unless those assets are self-hosted.
+## Run
+Serve this folder with a static HTTP server or deploy it to Netlify/Cloudflare Pages.
