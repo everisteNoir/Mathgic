@@ -4,10 +4,9 @@
  * and hyper-spatial portals (which isolate the stage so there is zero overlap).
  */
 export class SpellManager {
-  constructor(engine, eventBus, containerEl) {
+  constructor(engine, eventBus) {
     this.engine = engine;
     this.eventBus = eventBus;
-    this.containerEl = containerEl;
     this.spells = new Map();
 
     this.eventBus.on('TICK', ({ elapsed, delta }) => {
@@ -47,7 +46,6 @@ export class SpellManager {
     }
 
     this.spells.set(spell.id, spell);
-    this._renderSpellCard(spell);
   }
 
   setSpellActive(spellId, isActive, { instant = false } = {}) {
@@ -67,7 +65,6 @@ export class SpellManager {
       spell.active = false;
       spell.leaving = true;
       spell._leaveT = 0;
-      this._paintCard(spell, false);
       spell.onOutro?.(this.engine, this.eventBus);
       this.eventBus.emit('SPELL_TOGGLED', { spellId, active: false });
       return;
@@ -79,7 +76,7 @@ export class SpellManager {
       spell.onDeactivate?.(this.engine, this.eventBus);
     }
 
-    // If activating a hyper-spatial portal (e.g., 4D Tesseract or Non-Euclidean Space),
+    // If activating a hyper-spatial portal (e.g., Projection or Non-Euclidean Space),
     // automatically deactivate other portals and isolate the stage so nothing collides
     if (isActive && spell.isolateStage) {
       for (const other of this.spells.values()) {
@@ -93,7 +90,6 @@ export class SpellManager {
     }
 
     spell.active = isActive;
-    this._paintCard(spell, isActive);
 
     if (isActive) {
       spell.onActivate?.(this.engine, this.eventBus);
@@ -104,137 +100,120 @@ export class SpellManager {
     this.eventBus.emit('SPELL_TOGGLED', { spellId, active: isActive });
   }
 
-  _paintCard(spell, isActive) {
-    const card = this.containerEl.querySelector(`[data-spell-id="${spell.id}"]`);
-    if (!card) return;
-    card.classList.toggle('active', isActive);
-    const btn = card.querySelector('.summon-btn');
-    if (btn) {
-      btn.textContent = isActive ? 'Dismiss Twin' : 'Summon Twin';
-      btn.classList.toggle('active', isActive);
-    }
-  }
-
   getActiveSpellIds() {
     return Array.from(this.spells.values())
       .filter((s) => s.active)
       .map((s) => s.id);
   }
 
-  _renderSpellCard(spell) {
-    const card = document.createElement('div');
-    card.className = 'spell-card';
-    card.dataset.spellId = spell.id;
-
-    const tagLabel = spell.isolateStage ? 'HYPER-SPATIAL PORTAL' : 'INSCRIBED GEOMETRY';
-    const summon = spell.userToggle
-      ? '<button type="button" class="summon-btn">Summon Twin</button>'
-      : '';
-    const tagClass = spell.isolateStage ? 'spell-tag portal' : 'spell-tag';
-
-    card.innerHTML = `
-      <div class="spell-card-header">
-        <div>
-          <div class="spell-title">${spell.name}</div>
-          <span class="${tagClass}">${tagLabel}</span>
-          <div class="spell-desc">${spell.description}</div>
-        </div>
-      </div>
-      ${summon}
-      <div class="spell-controls"></div>
-    `;
-
-    card.querySelector('.summon-btn')?.addEventListener('click', () => {
-      spell.wanted = !spell.wanted;
-      this.setSpellActive(spell.id, spell.wanted);
-    });
-
-    const controlsWrap = card.querySelector('.spell-controls');
+  /**
+   * Builds the control rows of a spell for one page of the grimoire.
+   * pageCtrlId: the control whose options are the book pages (it is not drawn); pageValue: this page's option.
+   * Returns { el, refresh }; refresh() re-syncs every row with the spell's parameters and applies showWhen.
+   */
+  buildControls(spell, pageCtrlId = null, pageValue = null) {
+    const wrap = document.createElement('div');
+    wrap.className = 'page-controls';
     const rows = [];
-    // Controls may define showWhen(params) to appear only in certain modes
-    const refreshRows = () => {
+    const ctx = () => (pageCtrlId ? { ...spell.params, [pageCtrlId]: pageValue } : spell.params);
+    const refresh = () => {
       rows.forEach((r) => {
-        r.style.display = r._ctrl.showWhen && !r._ctrl.showWhen(spell.params) ? 'none' : '';
+        r._sync?.();
+        r.style.display = r._ctrl.showWhen && !r._ctrl.showWhen(ctx()) ? 'none' : '';
       });
     };
 
-    if (Array.isArray(spell.controls)) {
-      spell.controls.forEach((ctrl) => {
-        const row = document.createElement('div');
-        row._ctrl = ctrl;
+    (spell.controls || []).forEach((ctrl) => {
+      if (ctrl.id === pageCtrlId) return;
+      const row = document.createElement('div');
+      row._ctrl = ctrl;
 
-        if (ctrl.type === 'choice') {
-          // Segmented buttons: one option selected at a time
-          row.innerHTML = `
-            <div class="control-header"><label>${ctrl.label}</label></div>
-            <div class="choice-group"></div>
-          `;
-          const group = row.querySelector('.choice-group');
-          ctrl.options.forEach((opt) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'choice-btn' + (opt.value === ctrl.default ? ' active' : '');
-            btn.textContent = opt.label;
-            btn.addEventListener('click', () => {
-              spell.params[ctrl.id] = opt.value;
-              group.querySelectorAll('.choice-btn').forEach((b) => b.classList.toggle('active', b === btn));
-              spell.onParamChange?.(ctrl.id, opt.value);
-              refreshRows();
-            });
-            group.appendChild(btn);
-          });
-        } else if (ctrl.type === 'toggle') {
-          // Single On/Off button
-          row.innerHTML = `
-            <div class="control-header"><label>${ctrl.label}</label></div>
-            <div class="choice-group"><button type="button" class="choice-btn"></button></div>
-          `;
-          const btn = row.querySelector('button');
-          const paint = () => {
-            btn.textContent = spell.params[ctrl.id] ? 'On' : 'Off';
-            btn.classList.toggle('active', !!spell.params[ctrl.id]);
-          };
-          paint();
+      row.className = 'control-group spell-control-row';
+      if (ctrl.type === 'choice') {
+        // Segmented buttons: one option selected at a time
+        row.innerHTML = `
+          <div class="control-header"><label>${ctrl.label}</label></div>
+          <div class="choice-group"></div>
+        `;
+        const group = row.querySelector('.choice-group');
+        ctrl.options.forEach((opt) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'choice-btn';
+          btn.textContent = opt.label;
           btn.addEventListener('click', () => {
-            spell.params[ctrl.id] = !spell.params[ctrl.id];
-            paint();
-            spell.onParamChange?.(ctrl.id, spell.params[ctrl.id]);
-            refreshRows();
+            spell.params[ctrl.id] = opt.value;
+            spell.onParamChange?.(ctrl.id, opt.value);
+            refresh();
           });
-        } else {
-          row.innerHTML = `
-            <div class="control-header">
-              <label>${ctrl.label}</label>
-              <span class="control-val">${ctrl.format ? ctrl.format(ctrl.default) : ctrl.default}</span>
-            </div>
-            <input type="range" min="${ctrl.min}" max="${ctrl.max}" step="${ctrl.step}" value="${ctrl.default}" />
-          `;
-          const input = row.querySelector('input');
-          const valSpan = row.querySelector('.control-val');
-          input.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            spell.params[ctrl.id] = val;
-            valSpan.textContent = ctrl.format ? ctrl.format(val) : val;
-            spell.onParamChange?.(ctrl.id, val);
-            refreshRows();
-          });
-        }
-        rows.push(row);
-        controlsWrap.appendChild(row);
-      });
-      refreshRows();
-    }
-
-    if (spell.hasLiveReadout) {
-      const readout = document.createElement('div');
-      readout.className = 'spell-live-readout';
-      readout.textContent = spell.initialReadout || '';
-      spell._readoutEl = readout;
-      controlsWrap.appendChild(readout);
-    }
-
-    // Each spell lives in its own section panel (#panel-<spellId>); fall back to the container if missing
-    const slot = this.containerEl.querySelector(`#panel-${spell.id}`) || this.containerEl;
-    slot.appendChild(card);
+          group.appendChild(btn);
+        });
+        row._sync = () => {
+          group.querySelectorAll('.choice-btn').forEach((b, i) =>
+            b.classList.toggle('active', ctrl.options[i].value === spell.params[ctrl.id])
+          );
+        };
+      } else if (ctrl.type === 'action') {
+        row.innerHTML = `
+          <div class="control-header"><label>${ctrl.label}</label></div>
+          <button type="button" class="action-btn spell-action-btn"></button>
+        `;
+        const btn = row.querySelector('button');
+        row._sync = () => {
+          btn.textContent = typeof ctrl.buttonLabel === 'function'
+            ? ctrl.buttonLabel(spell, ctx())
+            : (ctrl.buttonLabel || 'Activate');
+          btn.disabled = typeof ctrl.disabled === 'function' ? !!ctrl.disabled(spell, ctx()) : !!ctrl.disabled;
+        };
+        btn.addEventListener('click', () => {
+          spell.onAction?.(ctrl.id, ctx());
+          refresh();
+        });
+      } else if (ctrl.type === 'toggle') {
+        // Single On/Off button
+        row.innerHTML = `
+          <div class="control-header"><label>${ctrl.label}</label></div>
+          <div class="choice-group"><button type="button" class="choice-btn"></button></div>
+        `;
+        const btn = row.querySelector('button');
+        row._sync = () => {
+          btn.textContent = spell.params[ctrl.id] ? 'On' : 'Off';
+          btn.classList.toggle('active', !!spell.params[ctrl.id]);
+        };
+        btn.addEventListener('click', () => {
+          spell.params[ctrl.id] = !spell.params[ctrl.id];
+          spell.onParamChange?.(ctrl.id, spell.params[ctrl.id]);
+          refresh();
+        });
+      } else {
+        row.innerHTML = `
+          <div class="control-header">
+            <label>${ctrl.label}</label>
+            <span class="control-val"></span>
+          </div>
+          <input type="range" min="${ctrl.min}" max="${ctrl.max}" step="${ctrl.step}" />
+        `;
+        const input = row.querySelector('input');
+        const valSpan = row.querySelector('.control-val');
+        const fmt = (v) => (ctrl.format ? ctrl.format(v) : v);
+        row._sync = () => {
+          const v = spell.params[ctrl.id];
+          input.value = v;
+          valSpan.textContent = fmt(v);
+          input.style.setProperty('--p', `${((v - ctrl.min) / (ctrl.max - ctrl.min)) * 100}%`);
+        };
+        input.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          spell.params[ctrl.id] = val;
+          valSpan.textContent = fmt(val);
+          spell.onParamChange?.(ctrl.id, val);
+          refresh();
+        });
+      }
+      rows.push(row);
+      wrap.appendChild(row);
+    });
+    refresh();
+    return { el: wrap, refresh };
   }
 }

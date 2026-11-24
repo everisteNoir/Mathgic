@@ -8,8 +8,9 @@ import * as THREE from 'three';
  * 2. Set `isolateStage: true` if it is a standalone spatial portal (auto-hides the central Platonic solid),
  *    or `isolateStage: false` if it inscribes inside the transparent Platonic solid.
  * 3. Import and register it in `js/main.js` via `spellManager.register(YourSpell)`.
- * 4. Give it a place in the menu: add a `<button class="section-btn" data-section="your-id">` to `#side-menu`
- *    and an empty `<div id="panel-your-id" class="tab-content"></div>` inside `#grimoire-panel` in `index.html`.
+ * 4. Give it a chapter in the book: add `{ id, letter, title, spell: 'your-id' }` to CHAPTERS in `js/ui/Grimoire.js`.
+ *    To give the chapter several pages, add a `type: 'choice'` control (e.g. id 'mode') and name it as the chapter's
+ *    `pageControl`: every option becomes a page, and an option's `legend` is the text on the left page.
  *
  * Control types: a slider (default), `type: 'choice'` (options: [{ value, label }]) and `type: 'toggle'`.
  * Any control may define `showWhen: (params) => boolean` to appear only in certain modes.

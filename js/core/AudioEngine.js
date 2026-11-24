@@ -49,6 +49,32 @@ export class AudioEngine {
     osc.stop(now + 0.9);
   }
 
+  /** Soft paper rustle when a page of the grimoire turns. */
+  playFlip() {
+    if (!this.enabled || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const len = Math.floor(this.ctx.sampleRate * 0.5);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const env = Math.sin((i / len) * Math.PI);
+      data[i] = (Math.random() * 2 - 1) * env * env;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1800, now);
+    filter.frequency.exponentialRampToValueAtTime(4200, now + 0.45);
+    filter.Q.value = 0.8;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.05;
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    src.start(now);
+  }
+
   /** Continuous hum while a solid is held: pitch and volume rise with charge level (0..1). */
   setCharge(level, baseFreq = 130.81) {
     if (!this.enabled || !this.ctx) return;

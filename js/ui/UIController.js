@@ -1,8 +1,8 @@
 /**
- * UIController.js — User Interface, Telemetry HUD & URL State Serialization
+ * UIController.js — chapter controls, geometric feedback audio and URL state.
  */
-import { fxState } from '../core/FXState.js?v=7';
-import { FantasyUI } from './FantasyUI.js?v=7';
+import { fxState } from '../core/FXState.js?v=13';
+import { FantasyUI } from './FantasyUI.js?v=13';
 
 export class UIController {
   constructor(engine, eventBus, audioEngine, spellManager) {
@@ -11,27 +11,18 @@ export class UIController {
     this.audio = audioEngine;
     this.spellManager = spellManager;
     this.lastEdgeAudioTime = 0;
-    this.currentSection = 'polyhedra';
+    this.grimoire = null;
     this.fantasy = new FantasyUI(audioEngine);
 
     this._cacheDOM();
     this._bindEvents();
-    this._bindEngineTelemetry();
+    this._bindEngineFeedback();
   }
 
   _cacheDOM() {
-    this.dockItems = document.querySelectorAll('.dock-item');
-    this.sectionBtns = document.querySelectorAll('.section-btn');
-    this.sectionPanels = document.querySelectorAll('.tab-content');
-    this.panel = document.getElementById('grimoire-panel');
-
-    this.btnMenu = document.getElementById('btn-menu');
-    this.sideMenu = document.getElementById('side-menu');
-
-    this.btnTogglePanel = document.getElementById('btn-toggle-panel');
     this.btnAudio = document.getElementById('btn-audio');
     this.audioLabel = document.getElementById('audio-label');
-    this.btnFx = document.getElementById('btn-fx');
+    this.fxButtons = document.querySelectorAll('[data-fx-toggle]');
     this.btnShare = document.getElementById('btn-share');
     this.btnPulse = document.getElementById('btn-element-pulse');
 
@@ -47,51 +38,28 @@ export class UIController {
     this.infoFaceShape = document.getElementById('info-face-shape');
     this.infoTip = document.getElementById('info-interaction-tip');
 
-    this.telType = document.getElementById('telemetry-type');
-    this.telMain = document.getElementById('telemetry-main');
-    this.telSub = document.getElementById('telemetry-sub');
-    this.chargeWrap = document.getElementById('charge-bar-wrap');
-    this.chargeFill = document.getElementById('charge-bar-fill');
 
     this.toastEl = document.getElementById('toast');
   }
 
   _bindEvents() {
-    // Select one of the 5 Platonic solids from bottom dock
-    this.dockItems.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const solidId = btn.dataset.solid;
-        this.engine.setManualSolidVisible(true);
-        this.engine.loadSolid(solidId);
-        this.audio.playResonance(this.engine.activeSolid?.meta.baseFreq || 150);
-        this.syncURLState();
-      });
-    });
-
-    // Left side menu: hidden by default, closes itself after a section is chosen
-    this.btnMenu.addEventListener('click', () => this.toggleMenu());
-    this.sectionBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.setSection(btn.dataset.section);
-        this.toggleMenu(false);
-      });
-    });
-
-    // Effects switch: remembered between visits
+    // Effects switch (a pill in the corner and a button on the Prologue page): remembered between visits
     const paintFx = () => {
-      this.btnFx.textContent = fxState.enabled ? 'FX: On' : 'FX: Off';
+      const text = fxState.enabled ? 'FX: On' : 'FX: Off';
+      this.fxButtons.forEach((b) => {
+        const label = b.querySelector('[data-fx-label]');
+        (label || b).textContent = text;
+      });
     };
     paintFx();
     fxState.applyToBody();
-    this.btnFx.addEventListener('click', () => {
-      const on = fxState.toggle();
-      paintFx();
-      this.showToast(on ? 'Visual effects awakened' : 'Static mode: effects are resting');
-    });
-
-    this.btnTogglePanel.addEventListener('click', () => {
-      this.panel.classList.toggle('collapsed');
-    });
+    this.fxButtons.forEach((b) =>
+      b.addEventListener('click', () => {
+        const on = fxState.toggle();
+        paintFx();
+        this.showToast(on ? 'Visual effects awakened' : 'Static mode: effects are resting');
+      })
+    );
 
     this.btnAudio.addEventListener('click', () => {
       const enabled = this.audio.toggle();
@@ -122,10 +90,8 @@ export class UIController {
     });
   }
 
-  _bindEngineTelemetry() {
+  _bindEngineFeedback() {
     this.eventBus.on('SOLID_CHANGED', ({ solidId, meta, geoData }) => {
-      this.dockItems.forEach((b) => b.classList.toggle('active', b.dataset.solid === solidId));
-
       [this.infoBadge, this.infoName, this.infoPhilosophy, this.infoFaceShape, this.infoTip].forEach((el) =>
         this.fantasy.retrigger(el)
       );
@@ -142,17 +108,9 @@ export class UIController {
       this.infoTip.textContent = meta.interactionTip;
     });
 
-    this.eventBus.on('VERTEX_HOVER', ({ vertexIndex, coords }) => {
-      this.telType.textContent = `GEOMETRIC VERTEX #${vertexIndex + 1}`;
-      this.telMain.textContent = `Coordinates: (${coords.x.toFixed(3)}, ${coords.y.toFixed(3)}, ${coords.z.toFixed(3)})`;
-      this.telSub.textContent = 'Convergence point of luminous edges';
-    });
-
+    // Geometric hover feedback is intentionally no longer shown in a telemetry HUD.
+    // Keep the polyhedral edge chime as the lightweight tactile feedback.
     this.eventBus.on('EDGE_HOVER', ({ edgeVertices }) => {
-      this.telType.textContent = `LUMINOUS EDGE [${edgeVertices[0] + 1} — ${edgeVertices[1] + 1}]`;
-      this.telMain.textContent = 'Harmonic geometric string';
-      this.telSub.textContent = 'Plucking harmonic chime proportional to edge length';
-
       const now = performance.now();
       if (now - this.lastEdgeAudioTime > 180) {
         this.audio.playChime(edgeVertices[0] + edgeVertices[1], 0.06);
@@ -160,21 +118,9 @@ export class UIController {
       }
     });
 
-    this.eventBus.on('FACE_HOVER', ({ faceIndex }) => {
-      this.telType.textContent = `CRYSTAL FACE #${faceIndex + 1}`;
-      this.telMain.textContent = 'Click to align camera directly with this face';
-      this.telSub.textContent = 'Click & hold to energize the elemental core';
-    });
-
     this.eventBus.on('FACE_CLICK', ({ faceIndex }) => {
       this.audio.playChime(faceIndex, 0.12);
       this.showToast(`Aligned camera view with Face #${faceIndex + 1}`);
-    });
-
-    this.eventBus.on('HOVER_CLEAR', () => {
-      this.telType.textContent = 'GEOMETRIC EXPLORATION';
-      this.telMain.textContent = 'Drag to rotate • Touch vertices, edges, or faces';
-      this.telSub.textContent = 'Scroll wheel to zoom in and out of space';
     });
 
     this.eventBus.on('CHARGE_RELEASE', ({ energy }) => {
@@ -184,13 +130,6 @@ export class UIController {
 
     this.eventBus.on('ENERGY_UPDATE', ({ energy }) => {
       this.audio.setCharge(energy, this.engine.activeSolid?.meta?.baseFreq);
-      if (energy > 0.02) {
-        this.chargeWrap.classList.add('active');
-        this.chargeFill.style.width = `${Math.round(energy * 100)}%`;
-      } else {
-        this.chargeWrap.classList.remove('active');
-        this.chargeFill.style.width = '0%';
-      }
     });
 
     this.eventBus.on('SPELL_TOGGLED', ({ spellId, active }) => {
@@ -202,46 +141,10 @@ export class UIController {
     });
   }
 
-  toggleMenu(open = this.sideMenu.classList.contains('collapsed')) {
-    this.sideMenu.classList.toggle('collapsed', !open);
-    this.btnMenu.setAttribute('aria-expanded', String(open));
-  }
-
-  /**
-   * Shows exactly one section: 'polyhedra' (no spell active) or a spell id.
-   * Portal spells hide the Platonic solid (and the solid dock); inscribed spells keep it visible as their base.
-   */
-  setSection(sectionId) {
-    // Only real section spells are sections; user-toggled ones (Dual Twin) belong to Polyhedra
-    const candidate = this.spellManager.spells.get(sectionId);
-    if (sectionId !== 'polyhedra' && (!candidate || candidate.userToggle)) {
-      sectionId = 'polyhedra';
-    }
-    if (sectionId !== this.currentSection) this.fantasy.portalTransition();
-    this.currentSection = sectionId;
-
-    // Decide first (before any spell activates) whether this section shows a polyhedron at all
-    const target = this.spellManager.spells.get(sectionId);
-    this.engine.setStageSolidVisible(!target?.isolateStage);
-
-    this.sectionBtns.forEach((b) => b.classList.toggle('active', b.dataset.section === sectionId));
-    this.sectionPanels.forEach((c) => c.classList.toggle('active', c.id === `panel-${sectionId}`));
-
-    // Deactivate every other spell first, then activate the one belonging to this section
-    for (const spell of this.spellManager.spells.values()) {
-      if (spell.userToggle) {
-        // Dual Twin lives in Polyhedra: it vanishes instantly when you leave, and returns if you had summoned it
-        const show = sectionId === 'polyhedra' && spell.wanted;
-        this.spellManager.setSpellActive(spell.id, show, { instant: sectionId !== 'polyhedra' });
-      } else if (spell.id !== sectionId) {
-        this.spellManager.setSpellActive(spell.id, false);
-      }
-    }
-    const spell = this.spellManager.spells.get(sectionId);
-    if (spell) this.spellManager.setSpellActive(spell.id, true);
-
-    document.body.dataset.stage = spell?.isolateStage ? 'portal' : 'solid';
-    this.syncURLState();
+  /** The book decides the chapter and page; the controller mirrors them into the share link. */
+  attachGrimoire(grimoire) {
+    this.grimoire = grimoire;
+    grimoire.onChange = () => this.syncURLState();
   }
 
   syncURLState() {
@@ -253,8 +156,10 @@ export class UIController {
     if (unfold > 0.01) {
       params.set('unfold', unfold.toFixed(2));
     }
-    if (this.currentSection !== 'polyhedra') {
-      params.set('section', this.currentSection);
+    const { section, page } = this.grimoire.state();
+    if (section !== 'polyhedra') {
+      params.set('section', section);
+      if (page > 0) params.set('page', page);
     }
     if (this.spellManager.spells.get('dual-morph')?.wanted) {
       params.set('dual', '1');
@@ -266,7 +171,7 @@ export class UIController {
     const hash = window.location.hash.replace(/^#/, '');
     if (!hash) {
       this.engine.loadSolid('tetrahedron');
-      this.setSection('polyhedra');
+      this.grimoire.restore({});
       return;
     }
     const params = new URLSearchParams(hash);
@@ -285,7 +190,7 @@ export class UIController {
     const requested = params.get('section') || legacy || 'polyhedra';
     const dual = this.spellManager.spells.get('dual-morph');
     if (dual && (params.get('dual') === '1' || requested === 'dual-morph')) dual.wanted = true;
-    this.setSection(requested);
+    this.grimoire.restore({ section: requested, page: params.get('page'), solid: solidId });
   }
 
   showToast(message) {

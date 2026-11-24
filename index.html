@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Mathgic — Sacred Geometry &amp; Non-Euclidean Laboratory</title>
+  <title>Mathgic — Spatial Geometry &amp; Infinity Laboratory</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./css/style.css?v=7" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css?v=13" />
 
   <!-- ImportMap enables zero-build ES Modules directly in browsers & Cloudflare Pages -->
   <script type="importmap">
@@ -19,14 +19,26 @@
     }
   </script>
 </head>
-<body>
+<body data-stage="solid">
   <!-- Fullscreen 3D Canvas -->
   <div id="canvas-container"></div>
+  <div class="vignette" aria-hidden="true"></div>
 
-  <!-- Top Navigation Bar -->
-  <header class="top-bar">
-    <div class="brand">
-      <button id="btn-menu" class="brand-sigil" title="Open or close the section menu" aria-label="Menu" aria-expanded="false" aria-controls="side-menu">
+  <!-- Title mark (not interactive) -->
+  <div class="brand-mark" aria-hidden="true">
+    <div class="brand-title">MATHGIC</div>
+    <div class="brand-subtitle">Sacred Geometry, Elemental Cores &amp; Non-Euclidean Space</div>
+  </div>
+
+  <!-- Effects switch (small pill, top right) -->
+  <button id="btn-fx" class="fx-pill" data-fx-toggle title="Turn visual effects on or off (static mode)">FX: On</button>
+
+
+  <!-- ======================= THE 3D GRIMOIRE & FLOATING ARCANE INTERFACE ======================= -->
+  <section id="grimoire" class="grimoire closed" aria-label="Mathgic grimoire">
+    <!-- Closed: a small leather book lying at the bottom. The diamond seal opens it. -->
+    <button id="book-cover" class="book-cover" title="Open the grimoire" aria-expanded="false" aria-controls="book-open">
+      <span class="cover-spine">
         <svg class="gem" viewBox="0 0 32 32" aria-hidden="true">
           <path class="gem-outer" pathLength="100" d="M16 2.5 L29.5 16 L16 29.5 L2.5 16 Z" />
           <path class="gem-inner" d="M16 9 L23 16 L16 23 L9 16 Z" />
@@ -34,191 +46,196 @@
           <circle cx="16" cy="2.5" r="1.4" /><circle cx="29.5" cy="16" r="1.4" />
           <circle cx="16" cy="29.5" r="1.4" /><circle cx="2.5" cy="16" r="1.4" />
         </svg>
-      </button>
-      <div>
-        <h1 class="brand-title">MATHGIC</h1>
-        <p class="brand-subtitle">Sacred Geometry, Elemental Cores &amp; Non-Euclidean Space</p>
+      </span>
+      <span class="cover-text">
+        <span class="cover-title">The Mathgic Grimoire</span>
+        <span class="cover-sub">Open the book</span>
+      </span>
+    </button>
+
+    <!-- Floating Arcane Knowledge: no card surface or frame -->
+    <aside id="floating-left" class="floating-panel floating-left" aria-label="Grimoire knowledge and formulas">
+      <div class="panel-crown" aria-hidden="true">
+        <span class="crown-rune">✦</span>
+        <span class="crown-label">Arcane Knowledge</span>
+      </div>
+      <div class="panel-chapter-heading" id="left-chapter-heading" aria-live="polite">
+        <span class="chapter-heading-symbol">α</span>
+        <span class="chapter-heading-meta">
+          <span class="chapter-heading-kicker">CHAPTER 01</span>
+          <span class="chapter-heading-name">PROLOGUE</span>
+        </span>
+      </div>
+      <div class="panel-content-viewport">
+        <div id="page-left" class="page-inner"></div>
+      </div>
+    </aside>
+
+    <!-- Floating Spell Controls: a separate spatial layer, never a framed card -->
+    <aside id="floating-right" class="floating-panel floating-right" aria-label="Grimoire interactive controls">
+      <div class="panel-crown" aria-hidden="true">
+        <span class="crown-rune">◈</span>
+        <span class="crown-label">Spell Controls</span>
+      </div>
+      <div class="panel-chapter-heading panel-chapter-heading-right" id="right-chapter-heading" aria-live="polite">
+        <span class="chapter-heading-symbol">α</span>
+        <span class="chapter-heading-meta">
+          <span class="chapter-heading-kicker">CHAPTER 01</span>
+          <span class="chapter-heading-name">PROLOGUE</span>
+        </span>
+      </div>
+      <div class="panel-content-viewport">
+        <div id="page-right" class="page-inner"></div>
+      </div>
+    </aside>
+
+    <!-- A vertical rune rail stays outside the book dock and never crosses the 3D stage. -->
+    <nav id="chapter-ribbons" class="chapter-rail" aria-label="Chapters"></nav>
+
+    <!-- Open: 3D Curved Book at bottom center with only the page dock below. -->
+    <div id="book-open" class="book-open">
+      <div id="book-3d-stage" class="book-3d-stage" aria-hidden="true" title="The 3D book is integrated into the main scene">
+        <div class="book-turn-hint" aria-hidden="true">
+          <span>‹ Prev Leaf</span>
+          <span>Next Leaf ›</span>
+        </div>
+      </div>
+
+      <div class="book-bottom-bar">
+        <nav id="page-ribbons" class="ribbons ribbons-bottom" aria-label="Pages"></nav>
+        <span class="dock-divider" aria-hidden="true"></span>
+        <button id="book-close" class="book-close" title="Close the book (Esc)">
+          <span class="close-glyph" aria-hidden="true">✦</span>
+          <span>Close Tome</span>
+        </button>
       </div>
     </div>
+  </section>
 
-    <div class="top-actions">
-      <button id="btn-audio" class="glass-btn" title="Toggle harmonic chimes on geometric interaction">
-        <span class="label" id="audio-label">Sound: Silent</span>
-      </button>
-      <button id="btn-share" class="glass-btn" title="Copy link to current geometric state">
-        <span class="label">Share Link</span>
-      </button>
-      <button id="btn-toggle-panel" class="glass-btn primary-glow" title="Open/Close Mathgic Control Panel">
-        <span class="label">Mathgic Lab</span>
-      </button>
+  <!-- Section portal flash (decorative) -->
+  <div id="portal-fx" class="portal-fx" aria-hidden="true"><span class="portal-ring"></span><span class="portal-ring r2"></span></div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- ===== Page store: the grimoire mounts these panels into the levitating side panes ===== -->
+  <div id="page-store" class="page-store" aria-hidden="true">
+
+    <!-- Prologue -->
+    <div id="pg-prologue-left" class="page-face" data-real>
+      <div class="chapter-mark">α</div>
+      <h3 class="page-title">Prologue</h3>
+      <p class="legend">
+        Every chapter of this grimoire is one geometric lens, and every page awakens a different mathematical world. Turn pages with the floating page marks, click the curved leaves, or use the arrow keys.
+      </p>
+      <p class="legend">
+        Drag the world to rotate the active model. The press-and-hold elemental charge is available only in Polyhedra.
+      </p>
     </div>
-  </header>
-
-  <!-- Left Side Menu (hidden by default): choose a section. Only Polyhedra / Dual Morph show a solid. -->
-  <aside id="side-menu" class="side-menu collapsed" aria-label="Sections">
-    <div class="side-menu-title">Sections</div>
-    <button class="section-btn active" data-section="polyhedra">
-      <span class="section-icon">Δ</span>
-      <span class="section-text"><span class="section-name">Polyhedra</span><span class="section-sub">The 5 Platonic solids &amp; their duals</span></span>
-    </button>
-    <button class="section-btn" data-section="golden-ratio">
-      <span class="section-icon">φ</span>
-      <span class="section-text"><span class="section-name">Golden Ratio</span><span class="section-sub">φ in rectangles, spirals &amp; seeds</span></span>
-    </button>
-    <button class="section-btn" data-section="projection">
-      <span class="section-icon">π</span>
-      <span class="section-text"><span class="section-name">Projection</span><span class="section-sub">Shadows of dimensions &amp; the quotient v ~ λv</span></span>
-    </button>
-    <button class="section-btn" data-section="tesseract-4d">
-      <span class="section-icon">τ</span>
-      <span class="section-text"><span class="section-name">Tesseract 4D</span><span class="section-sub">A hypercube turning inside out</span></span>
-    </button>
-    <button class="section-btn" data-section="non-euclidean">
-      <span class="section-icon">κ</span>
-      <span class="section-text"><span class="section-name">Non-Euclidean</span><span class="section-sub">Curved space &amp; geodesics</span></span>
-    </button>
-    <div class="side-menu-build">Build 7</div>
-  </aside>
-
-  <!-- Live Interaction Telemetry HUD (Bottom Left) -->
-  <aside id="telemetry-hud" class="telemetry-hud">
-    <div class="telemetry-badge" id="telemetry-type">GEOMETRIC EXPLORATION</div>
-    <div class="telemetry-main" id="telemetry-main">Drag to rotate • Touch vertices, edges, or faces</div>
-    <div class="telemetry-sub" id="telemetry-sub">Click &amp; hold to ignite elemental core</div>
-    <div class="charge-bar-wrap" id="charge-bar-wrap">
-      <div class="charge-bar-fill" id="charge-bar-fill"></div>
+    <div id="pg-prologue-right" class="page-face" data-real>
+      <div class="control-group">
+        <div class="control-header"><label>Harmonic chimes</label></div>
+        <button id="btn-audio" class="action-btn"><span id="audio-label">Sound: Silent</span></button>
+      </div>
+      <div class="control-group">
+        <div class="control-header"><label>Visual effects</label></div>
+        <button class="action-btn" data-fx-toggle><span data-fx-label>FX: On</span></button>
+        <p class="control-hint">Off enters a calm visual mode. The mathematical models and essential transitions remain available.</p>
+      </div>
+      <div class="control-group">
+        <div class="control-header"><label>Remember this moment</label></div>
+        <button id="btn-share" class="action-btn">Share Link</button>
+      </div>
+      <div class="build-note">Build 13 • Spatial Grimoire</div>
     </div>
-  </aside>
 
-  <!-- Right Mathgic Control Panel (Collapsible) -->
-  <aside id="grimoire-panel" class="grimoire-panel collapsed">
-    <!-- SECTION: Polyhedra — Platonic philosophy & 2D net unfolding -->
-    <div id="panel-polyhedra" class="tab-content active">
+    <!-- Prologue · References: selected further reading, with verified publisher/catalogue links. -->
+    <div id="pg-prologue-ref-left" class="page-face reference-page" data-real>
+      <div class="chapter-mark">✧</div>
+      <h3 class="page-title">Selected References</h3>
+      <p class="legend">A short reading path for regular polytopes and the geometric viewpoints used throughout Mathgic.</p>
+      <article class="reference-entry">
+        <span class="reference-tag">01 · POLYTOPES</span>
+        <a class="reference-title" href="https://old.maa.org/node/106817" target="_blank" rel="noopener noreferrer">Regular Polytopes</a>
+        <p class="reference-meta">H. S. M. Coxeter · 3rd edition · Dover Publications · 1973</p>
+        <a class="reference-link" href="https://old.maa.org/node/106817" target="_blank" rel="noopener noreferrer">Bibliographic record ↗</a>
+      </article>
+      <article class="reference-entry">
+        <span class="reference-tag">02 · GEOMETRY</span>
+        <a class="reference-title" href="https://doi.org/10.1007/0-387-29052-4" target="_blank" rel="noopener noreferrer">The Four Pillars of Geometry</a>
+        <p class="reference-meta">John Stillwell · Springer · 2005</p>
+        <a class="reference-link" href="https://doi.org/10.1007/0-387-29052-4" target="_blank" rel="noopener noreferrer">DOI: 10.1007/0-387-29052-4 ↗</a>
+      </article>
+    </div>
+    <div id="pg-prologue-ref-right" class="page-face reference-page" data-real>
+      <div class="chapter-mark">ℵ</div>
+      <h3 class="page-title">Set Theory &amp; Space</h3>
+      <p class="legend">Further reading for cardinality, the power-set theorem, and Euclidean/non-Euclidean geometry.</p>
+      <article class="reference-entry">
+        <span class="reference-tag">03 · SET THEORY</span>
+        <a class="reference-title" href="https://doi.org/10.1016/C2009-0-22079-4" target="_blank" rel="noopener noreferrer">Elements of Set Theory</a>
+        <p class="reference-meta">Herbert B. Enderton · Academic Press · 1977</p>
+        <a class="reference-link" href="https://doi.org/10.1016/C2009-0-22079-4" target="_blank" rel="noopener noreferrer">DOI: 10.1016/C2009-0-22079-4 ↗</a>
+      </article>
+      <article class="reference-entry">
+        <span class="reference-tag">04 · NON-EUCLIDEAN GEOMETRY</span>
+        <a class="reference-title" href="https://books.google.com/books?id=Iz3JvgEACAAJ" target="_blank" rel="noopener noreferrer">Euclidean and Non-Euclidean Geometries: Development and History</a>
+        <p class="reference-meta">Marvin J. Greenberg · 4th edition · Macmillan Learning · 2007</p>
+        <a class="reference-link" href="https://books.google.com/books?id=Iz3JvgEACAAJ" target="_blank" rel="noopener noreferrer">Bibliographic record ↗</a>
+      </article>
+      <p class="reference-footnote">Selected further reading. Edition and publication details link to publisher, DOI, or library records.</p>
+    </div>
+
+    <!-- Polyhedra: left panel (information) -->
+    <div id="pg-poly-left" class="page-face" data-real>
       <div class="solid-header">
         <span class="element-pill" id="info-element-badge">FIRE • PYR</span>
         <h2 id="info-solid-name">Tetrahedron</h2>
       </div>
-
       <p class="philosophy-quote" id="info-philosophy">
         “Among regular solids, the tetrahedron has the sharpest angles and smallest volume-to-surface ratio — Plato assigned it to Fire for its piercing heat and swift motion.”
       </p>
-
-      <!-- Visual Euler Formula -->
       <div class="euler-box">
         <div class="euler-title">Euler's Polyhedron Formula: <span>V − E + F = 2</span></div>
         <div class="euler-grid">
-          <div class="euler-stat">
-            <span class="stat-val" id="stat-v">4</span>
-            <span class="stat-lbl">Vertices (V)</span>
-          </div>
+          <div class="euler-stat"><span class="stat-val" id="stat-v">4</span><span class="stat-lbl">Vertices (V)</span></div>
           <div class="euler-op">−</div>
-          <div class="euler-stat">
-            <span class="stat-val" id="stat-e">6</span>
-            <span class="stat-lbl">Edges (E)</span>
-          </div>
+          <div class="euler-stat"><span class="stat-val" id="stat-e">6</span><span class="stat-lbl">Edges (E)</span></div>
           <div class="euler-op">+</div>
-          <div class="euler-stat">
-            <span class="stat-val" id="stat-f">4</span>
-            <span class="stat-lbl">Faces (F)</span>
-          </div>
+          <div class="euler-stat"><span class="stat-val" id="stat-f">4</span><span class="stat-lbl">Faces (F)</span></div>
           <div class="euler-op">=</div>
-          <div class="euler-stat result">
-            <span class="stat-val">2</span>
-            <span class="stat-lbl">Invariant</span>
-          </div>
+          <div class="euler-stat result"><span class="stat-val">2</span><span class="stat-lbl">Invariant</span></div>
         </div>
         <div class="face-shape-note" id="info-face-shape">4 equilateral triangles • Dual: Self-dual</div>
       </div>
+    </div>
 
-      <!-- 2D Net Unfolding Slider -->
+    <!-- Polyhedra: right panel (controls) -->
+    <div id="pg-poly-right" class="page-face" data-real>
       <div class="control-group">
         <div class="control-header">
           <label for="slider-unfold">2D Geometric Net Unfolding</label>
           <span class="control-val" id="val-unfold">0%</span>
         </div>
         <input type="range" id="slider-unfold" min="0" max="1" step="0.005" value="0" />
-        <p class="control-hint">Drag the slider to unhinge glowing edges and unfold the 3D polyhedron flat onto a 2D plane.</p>
       </div>
-
-      <!-- Signature Elemental Interaction -->
       <div class="control-group">
-        <div class="control-header">
-          <label>Elemental Core Interaction</label>
-        </div>
+        <div class="control-header"><label>Elemental Core</label></div>
         <p class="control-hint" id="info-interaction-tip">
           Click &amp; hold on the solid to stoke the inner flame from crimson to white-hot; touch edges to pluck harmonic notes.
         </p>
-        <button id="btn-element-pulse" class="action-btn">
-          Trigger Elemental Resonance
-        </button>
+        <button id="btn-element-pulse" class="action-btn">Trigger Elemental Resonance</button>
       </div>
-
-      <!-- Dual Twin: SpellManager.js renders its card (Summon / Dismiss + ratio slider) here -->
-      <div id="panel-dual-morph" class="dual-slot"></div>
+      <div id="dual-block" class="dual-block">
+        <div class="control-header"><label>Dual Twin</label></div>
+        <p class="control-hint">The face centres of a solid are the vertices of its dual.</p>
+        <button id="btn-summon" class="action-btn">Summon Twin</button>
+        <div id="dual-controls"></div>
+      </div>
     </div>
-
-    <!-- SECTIONS: one per Mathgic spell. SpellManager.js injects each spell card into its own panel. -->
-    <div id="panel-golden-ratio" class="tab-content">
-      <p class="panel-intro">
-        A standalone exploration of φ = 1.618… Choose a pattern below; no polyhedron is shown here.
-      </p>
-    </div>
-    <div id="panel-projection" class="tab-content">
-      <p class="panel-intro">
-        How a space casts its shadow into fewer dimensions, and what remains when every vector v is identified with its multiples λv. No polyhedron is shown here.
-      </p>
-    </div>
-    <div id="panel-tesseract-4d" class="tab-content">
-      <p class="panel-intro">
-        A standalone hyper-spatial portal. The Platonic solid is hidden so nothing overlaps.
-      </p>
-    </div>
-    <div id="panel-non-euclidean" class="tab-content">
-      <p class="panel-intro">
-        A standalone hyper-spatial portal. The Platonic solid is hidden so nothing overlaps.
-      </p>
-    </div>
-  </aside>
-
-  <!-- Bottom 5 Platonic Solids Dock (shown in Polyhedra and in sections that inscribe a spell inside a solid) -->
-  <nav class="element-dock" id="element-dock" aria-label="Select Platonic solid">
-    <button class="dock-item active" data-solid="tetrahedron" style="--accent: #ff5722;">
-      <span class="dock-symbol">PYR</span>
-      <span class="dock-name">Fire</span>
-      <span class="dock-sub">4 Faces</span>
-    </button>
-    <button class="dock-item" data-solid="cube" style="--accent: #10b981;">
-      <span class="dock-symbol">GĒ</span>
-      <span class="dock-name">Earth</span>
-      <span class="dock-sub">6 Faces</span>
-    </button>
-    <button class="dock-item" data-solid="octahedron" style="--accent: #38bdf8;">
-      <span class="dock-symbol">AĒR</span>
-      <span class="dock-name">Air</span>
-      <span class="dock-sub">8 Faces</span>
-    </button>
-    <button class="dock-item" data-solid="icosahedron" style="--accent: #3b82f6;">
-      <span class="dock-symbol">HYDŌR</span>
-      <span class="dock-name">Water</span>
-      <span class="dock-sub">20 Faces</span>
-    </button>
-    <button class="dock-item" data-solid="dodecahedron" style="--accent: #c084fc;">
-      <span class="dock-symbol">KOSMOS</span>
-      <span class="dock-name">Aether</span>
-      <span class="dock-sub">12 Faces</span>
-    </button>
-  </nav>
-
-  <!-- Section portal flash (decorative) -->
-  <div id="portal-fx" class="portal-fx" aria-hidden="true"><span class="portal-ring"></span><span class="portal-ring r2"></span></div>
-
-  <!-- Effects switch (small pill, bottom right) -->
-  <button id="btn-fx" class="fx-pill" title="Turn visual effects on or off (static mode)">FX: On</button>
-
-  <!-- Toast Notification -->
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
 
   <!-- Launch ES Module Application -->
-  <script type="module" src="./js/main.js?v=7"></script>
+  <script type="module" src="./js/main.js?v=13"></script>
 </body>
 </html>

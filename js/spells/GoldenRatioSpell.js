@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PHI } from '../solids/PlatonicMath.js?v=7';
+import { PHI } from '../solids/PlatonicMath.js?v=9';
 
 const GOLDEN_ANGLE = 137.50776405; // degrees = 360° / φ²
 const TILT = -0.55; // flat patterns lean toward the camera so they stay readable while the stage spins
@@ -29,11 +29,11 @@ export const GoldenRatioSpell = {
       label: 'Pattern',
       default: 'rectangles',
       options: [
-        { value: 'rectangles', label: 'Rectangles' },
-        { value: 'spiral', label: 'Spiral' },
-        { value: 'phyllotaxis', label: 'Seeds' },
-        { value: 'pentagram', label: 'Pentagram' },
-        { value: 'cut', label: 'Golden Cut' }
+        { value: 'rectangles', label: 'Rectangles', legend: 'Three golden rectangles, each with sides in the ratio φ : 1, meet at right angles. Spin them like a gyroscope.' },
+        { value: 'spiral', label: 'Spiral', legend: 'Squares with Fibonacci sides tile a rectangle, and a quarter circle in each draws the golden spiral. Neighbouring Fibonacci numbers close in on φ.' },
+        { value: 'phyllotaxis', label: 'Seeds', legend: 'A sunflower plants each seed one golden angle (about 137.5°) after the last. Move the angle and the even packing breaks into radial arms.' },
+        { value: 'pentagram', label: 'Pentagram', legend: 'In a pentagram every diagonal is φ times a side, and each nested pentagram is 1/φ² the size of the one around it.' },
+        { value: 'cut', label: 'Golden Cut', legend: 'Cut a segment so that whole : long equals long : short. Only one cut works, and the ratio is φ.' }
       ]
     },
     // --- Rectangles ---

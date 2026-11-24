@@ -104,6 +104,25 @@ export class HoldFX {
     this.group.add(this.wave);
   }
 
+
+  /** Cancel all charge/release visuals immediately when Hold is unavailable. */
+  reset() {
+    this.group.visible = false;
+    this.flash = 0;
+    this.shakeImpulse = 0;
+    this.motes.visible = false;
+    this.moteMat.opacity = 0;
+    this.rings.forEach(({ holder, mat }) => {
+      holder.visible = false;
+      mat.opacity = 0;
+    });
+    this.sparks.visible = false;
+    this.wave.visible = false;
+    this.waveMat.opacity = 0;
+    this.waveT = 1;
+    this.sparkLife.fill(0);
+  }
+
   setElement(meta, solidId) {
     this.cfg = BURST[solidId] || BURST.tetrahedron;
     this.palette = [meta.primaryColor, meta.secondaryColor, meta.tertiaryColor].map((c) => new THREE.Color(c));

@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { createGlobalUniforms } from './Uniforms.js?v=7';
-import { HoldFX } from './HoldFX.js?v=7';
-import { fxState } from './FXState.js?v=7';
-import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js?v=7';
+import { createGlobalUniforms } from './Uniforms.js?v=13';
+import { HoldFX } from './HoldFX.js?v=13';
+import { fxState } from './FXState.js?v=13';
+import { SolidMeshBuilder } from '../solids/SolidMeshBuilder.js?v=13';
 
 const WORLD_X = new THREE.Vector3(1, 0, 0);
 const WORLD_Y = new THREE.Vector3(0, 1, 0);
@@ -24,6 +24,7 @@ export class Engine {
     this.builder = new SolidMeshBuilder(this.uniforms);
 
     this.activeSolid = null;
+    this.retiringSolids = [];
     this.spellLayer = new THREE.Group();
     this.spellLayer.name = 'SpellLayer';
 
@@ -34,10 +35,17 @@ export class Engine {
     this.solidPresence = 1; // 0..1: the solid materializes / dissolves smoothly when sections change
     this._simple = false; // true while the core uses the plain shrink (FX off)
     this._viewK = 0;
+    this._shift = 0; // pixels the picture is lifted so the open book never covers the solid
+    this._shiftTarget = 0;
+    this._zoom = 1; // camera pull-back while the book is open
+    this._zoomTarget = 1;
+    this._hasOffset = false;
 
     // Inertial world-space angular velocity: x = yaw (World Y), y = pitch (World X)
     this.isDragging = false;
     this.isHolding = false;
+    this.holdInteractionEnabled = false;
+    this.book = null;
     this.dragDistance = 0;
     this.prevPointer = new THREE.Vector2();
     this.pointerNDC = new THREE.Vector2(99, 99);
@@ -145,6 +153,32 @@ export class Engine {
     this._syncSolidVisibility();
   }
 
+  /** Register the Grimoire in this scene; the Engine remains the sole renderer. */
+  attachBook(book) {
+    this.book = book;
+    if (book?.bookGroup && book.bookGroup.parent !== this.scene) this.scene.add(book.bookGroup);
+    book?.updateAnchor?.();
+  }
+
+  /** Hold-to-charge is a Polyhedra-only interaction. */
+  setHoldInteractionEnabled(enabled) {
+    const next = !!enabled;
+    if (this.holdInteractionEnabled === next) return;
+    this.holdInteractionEnabled = next;
+    if (!next) {
+      this.isHolding = false;
+      this.uniforms.uEnergy.value = 0;
+      this.holdFX?.reset?.();
+      this.eventBus.emit('ENERGY_UPDATE', { energy: 0 });
+    }
+  }
+
+  /** Legacy book layout hook retained for callers; the book is now camera-anchored in 3D. */
+  setBookView() {
+    this._shiftTarget = 0;
+    this._zoomTarget = 1;
+  }
+
   setStageSolidVisible(visible) {
     this.stageSolidVisible = visible;
     this._syncSolidVisibility();
@@ -170,8 +204,18 @@ export class Engine {
 
   loadSolid(solidId) {
     if (this.activeSolid) {
-      this.worldPivot.remove(this.activeSolid.rootGroup);
-      this.activeSolid.dispose();
+      const outgoing = this.activeSolid;
+      outgoing.fxGroup.visible = false;
+      outgoing.particles.visible = false;
+      if (outgoing.rootGroup.visible) {
+        outgoing._exitAge = 0;
+        outgoing._exitDuration = 0.34;
+        outgoing._exitScale = outgoing.rootGroup.scale.clone();
+        this.retiringSolids.push(outgoing);
+      } else {
+        this.worldPivot.remove(outgoing.rootGroup);
+        outgoing.dispose();
+      }
     }
 
     const built = this.builder.build(solidId);
@@ -221,7 +265,7 @@ export class Engine {
 
   /** Releasing a fully charged hold: burst VFX + face pulse. */
   releaseCharge(charge) {
-    if (!this.activeSolid || !this.activeSolid.rootGroup.visible) return;
+    if (!this.holdInteractionEnabled || !this.activeSolid || !this.activeSolid.rootGroup.visible) return;
     if (fxState.enabled) this.holdFX.burst(charge);
     this.triggerPulse(new THREE.Vector3(0, 0, 0));
     this.eventBus.emit('CHARGE_RELEASE', { energy: charge, solidId: this.activeSolid.solidId });
@@ -239,8 +283,29 @@ export class Engine {
 
     const onDown = (e) => {
       const { x, y } = getCoords(e);
+      const rect = dom.getBoundingClientRect();
+      this.pointerNDC.x = ((x - rect.left) / Math.max(1, rect.width)) * 2 - 1;
+      this.pointerNDC.y = -((y - rect.top) / Math.max(1, rect.height)) * 2 + 1;
+
+      // Charging starts only when the pointer actually lands on a visible solid.
+      // This prevents accidental bursts on empty canvas space or on the book behind it.
+      let solidIsFrontmost = false;
+      if (this.holdInteractionEnabled && this.activeSolid?.rootGroup.visible) {
+        this.raycaster.setFromCamera(this.pointerNDC, this.camera);
+        const solidTargets = [
+          ...this.activeSolid.vertexSpheres,
+          ...this.activeSolid.edgeMeshes,
+          ...this.activeSolid.faceMeshes
+        ];
+        const solidHits = solidTargets.length ? this.raycaster.intersectObjects(solidTargets, false) : [];
+        const bookHits = this.book?.opened && this.book.bookGroup?.visible
+          ? this.raycaster.intersectObject(this.book.bookGroup, true)
+          : [];
+        solidIsFrontmost = !!solidHits.length && (!bookHits.length || solidHits[0].distance < bookHits[0].distance);
+      }
+
       this.isDragging = true;
-      this.isHolding = true;
+      this.isHolding = this.holdInteractionEnabled && solidIsFrontmost;
       this.dragDistance = 0;
       this.prevPointer.set(x, y);
       this.targetCameraQuat = null;
@@ -365,12 +430,28 @@ export class Engine {
   }
 
   _performRaycastClick() {
-    if (!this.activeSolid || !this.activeSolid.rootGroup.visible) return;
     this.raycaster.setFromCamera(this.pointerNDC, this.camera);
-    const hits = this.raycaster.intersectObjects(this.activeSolid.faceMeshes, false);
 
-    if (hits.length > 0) {
-      const hit = hits[0];
+    const bookHits = this.book?.opened && this.book.bookGroup?.visible
+      ? this.raycaster.intersectObject(this.book.bookGroup, true)
+      : [];
+    const solidTargets = this.activeSolid && this.activeSolid.rootGroup.visible
+      ? [...this.activeSolid.vertexSpheres, ...this.activeSolid.edgeMeshes, ...this.activeSolid.faceMeshes]
+      : [];
+    const solidHits = solidTargets.length ? this.raycaster.intersectObjects(solidTargets, false) : [];
+    const solidFaceHits = this.activeSolid && this.activeSolid.rootGroup.visible
+      ? this.raycaster.intersectObjects(this.activeSolid.faceMeshes, false)
+      : [];
+
+    // The book is physically behind the solid; use actual hit distance rather
+    // than DOM z-index to decide which object receives a click.
+    if (bookHits.length && (!solidHits.length || bookHits[0].distance < solidHits[0].distance)) {
+      this.book.handleRaycastHit(bookHits[0].point);
+      return;
+    }
+
+    if (solidFaceHits.length > 0) {
+      const hit = solidFaceHits[0];
       const faceMesh = hit.object;
 
       const localHit = this.activeSolid.rootGroup.worldToLocal(hit.point.clone());
@@ -409,6 +490,21 @@ export class Engine {
       }
       this.eventBus.emit('ENERGY_UPDATE', { energy: this.uniforms.uEnergy.value });
 
+      // Outgoing solids shrink and rotate away before their geometries are disposed.
+      for (let i = this.retiringSolids.length - 1; i >= 0; i--) {
+        const outgoing = this.retiringSolids[i];
+        outgoing._exitAge += delta;
+        const t = THREE.MathUtils.clamp(outgoing._exitAge / outgoing._exitDuration, 0, 1);
+        const eased = t * t * (3 - 2 * t);
+        outgoing.rootGroup.scale.copy(outgoing._exitScale).multiplyScalar(Math.max(0.001, 1 - eased));
+        outgoing.rootGroup.rotation.y += delta * (2.2 + t * 5.5);
+        if (t >= 1) {
+          this.worldPivot.remove(outgoing.rootGroup);
+          outgoing.dispose();
+          this.retiringSolids.splice(i, 1);
+        }
+      }
+
       if (this.activeSolid) {
         const meta = this.activeSolid.meta;
 
@@ -441,9 +537,8 @@ export class Engine {
         // Smooth materialize / dissolve when the solid is shown or hidden (instant in static mode)
         const presenceTarget = this.isSolidEffectivelyVisible() ? 1 : 0;
         const rich = fxState.enabled;
-        this.solidPresence = rich
-          ? this.solidPresence + (presenceTarget - this.solidPresence) * Math.min(1, delta * 7)
-          : presenceTarget;
+        // Materialize/dissolve is a structural scene transition, so it remains active in FX Off.
+        this.solidPresence += (presenceTarget - this.solidPresence) * Math.min(1, delta * 7);
         if (Math.abs(this.solidPresence - presenceTarget) < 0.004) this.solidPresence = presenceTarget;
         const pres = this.solidPresence;
         this.activeSolid.rootGroup.visible = pres > 0.01;
@@ -508,14 +603,28 @@ export class Engine {
       this._viewK += (unfoldTarget - this._viewK) * Math.min(1, delta * 4);
       const unfoldView = this._viewK;
       this.cameraDistance = THREE.MathUtils.lerp(this.cameraDistance, this.targetCameraDistance, 0.1);
+      this._zoom += (this._zoomTarget - this._zoom) * Math.min(1, delta * 5);
       this.camera.position.set(
         (Math.random() - 0.5) * shake,
         THREE.MathUtils.lerp(0.25, 2.3, unfoldView) + (Math.random() - 0.5) * shake,
-        this.cameraDistance
+        this.cameraDistance * this._zoom
       );
       this.camera.lookAt(0, 0, 0);
 
+      // Smoothly shift the view window while the book opens or closes
+      this._shift += (this._shiftTarget - this._shift) * Math.min(1, delta * 6);
+      const cw = this.container.clientWidth || window.innerWidth;
+      const ch = this.container.clientHeight || window.innerHeight;
+      if (Math.abs(this._shift) > 0.3 || this._shiftTarget !== 0) {
+        this.camera.setViewOffset(cw, ch, 0, this._shift, cw, ch);
+        this._hasOffset = true;
+      } else if (this._hasOffset) {
+        this.camera.clearViewOffset();
+        this._hasOffset = false;
+      }
+
       this.starField.rotation.y = elapsed * 0.015;
+      this.book?.updateAnchor?.();
 
       this.eventBus.emit('TICK', { elapsed, delta });
 

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { PLATONIC_DATA, getSolidGeometryData } from './PlatonicMath.js?v=7';
+import { PLATONIC_DATA, getSolidGeometryData } from './PlatonicMath.js?v=9';
 import {
   createSheerFaceMaterial,
   createGlowingEdgeMaterial,
   createInnerFlameMaterial
-} from '../shaders/ElementShaders.js?v=7';
+} from '../shaders/ElementShaders.js?v=9';
 
 /** Flat glowing rings lying on the ground plane (used for ripples and gust waves). */
 function makeFlatRings(parent, disposables, count, color, y) {

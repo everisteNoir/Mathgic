@@ -115,9 +115,9 @@ export const ProjectionSpell = {
       label: 'Lens',
       default: 'quotient',
       options: [
-        { value: 'shadows', label: 'Shadows' },
-        { value: 'quotient', label: 'Quotient v ~ λv' },
-        { value: 'ladder', label: 'Geometry Ladder' }
+        { value: 'shadows', label: 'Shadows', legend: 'An n-dimensional cube cast down one dimension at a time: first to 3D, then to a flat shadow, then to a line.' },
+        { value: 'quotient', label: 'Quotient v ~ λv', legend: 'Identify every vector v with all of its multiples λv. What remains is projective space.' },
+        { value: 'ladder', label: 'Geometry Ladder', legend: 'Euclidean, Affine, Projective: three geometries, each keeping less than the one before.' }
       ]
     },
     // ---------------- Shadows ----------------
